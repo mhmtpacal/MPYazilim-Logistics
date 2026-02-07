@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace MPYazilim\Logistics;
 
 use MPYazilim\Logistics\Builders\DhlShipmentBuilder;
+use MPYazilim\Logistics\Builders\HepsiJetShipmentBuilder;
 use MPYazilim\Logistics\Builders\PttShipmentBuilder;
 use MPYazilim\Logistics\Carriers\Dhl\DhlCarrierAdapter;
+use MPYazilim\Logistics\Carriers\HepsiJet\HepsiJetCarrierAdapter;
 use MPYazilim\Logistics\Carriers\Ptt\PttCarrierAdapter;
 
 final class MPLogistics
@@ -19,5 +21,10 @@ final class MPLogistics
     public static function dhl(): DhlShipmentBuilder
     {
         return new DhlShipmentBuilder(new DhlCarrierAdapter());
+    }
+
+    public static function hepsijet(): HepsiJetShipmentBuilder
+    {
+        return new HepsiJetShipmentBuilder(new HepsiJetCarrierAdapter());
     }
 }

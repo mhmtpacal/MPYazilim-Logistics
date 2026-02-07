@@ -120,6 +120,9 @@ $response = MPLogistics::ptt()
 - `->return()` cagrildiginda `musteriId = username`, `->send()` cagrildiginda `musteriId = postaCeki` olarak gonderilir.
 - PTT test ortami icin `->test(true)` kullanilir ve otomatik olarak `...V2Test` / `...YuklemeTest` endpointlerine gider.
 
+
+---
+
 ## DHL (MNG) Entegrasyonu
 
 Normal gonderi:
@@ -249,3 +252,90 @@ $response = MPLogistics::dhl()
 - `MPLogistics::dhl()` DHL olarak adlandirildi (MNG API endpointlerini kullanir).
 - `->return()` cagrisinda otomatik olarak `createReturnOrder` endpointine gider.
 - Token temp dosyada cachelenir (`30 dakika`), suresi dolmadan yeniden token istenmez.
+
+---
+
+## HepsiJet Entegrasyonu
+
+HepsiJet tarafinda iade yoktur.
+
+```php
+<?php
+
+use MPYazilim\Logistics\MPLogistics;
+
+$resp = MPLogistics::hepsijet()
+    ->account(
+        username: 'HEPSIJET_USERNAME',
+        password: 'HEPSIJET_PASSWORD',
+        companyName: 'SIRKET_ADI',
+        companyCode: 'SIRKET_KODU'
+    )
+    ->payload(
+        customerDeliveryNo: 'BARCODE_1001',
+        customerOrderId: 'BARCODE_1001',
+        totalParcels: '1',
+        desi: '1',
+        deliveryDateOriginal: '2026-02-07',
+        deliveryType: 'RETAIL',
+        productCode: 'HX_STD',
+        receiverCompanyCustomerId: 'BARCODE_1001_ADDR_1',
+        receiverFirstName: 'Ad',
+        receiverLastName: 'Soyad',
+        receiverPhone1: '905551112233',
+        receiverEmail: 'mail@ornek.com',
+        senderCompanyAddressId: 'SENDER_ADDRESS_ID',
+        senderCityName: 'ISTANBUL',
+        senderTownName: 'KADIKOY',
+        senderDistrictName: 'SARUHAN',
+        senderAddressLine1: 'Depo adresi',
+        recipientCompanyAddressId: 'RECIPIENT_ADDR_1',
+        recipientCityName: 'ISTANBUL',
+        recipientTownName: 'KADIKOY',
+        recipientDistrictName: '',
+        recipientAddressLine1: 'Musteri adresi',
+        recipientPerson: 'Ad Soyad',
+        recipientPersonPhone1: '905551112233',
+        countryName: 'Turkiye',
+        deliverySlotOriginal: '0',
+        extra: [] // kapida odeme gibi ek alanlar
+    )
+    ->test(false)
+    ->send();
+
+$takip = MPLogistics::hepsijet()
+    ->account(
+        username: 'HEPSIJET_USERNAME',
+        password: 'HEPSIJET_PASSWORD',
+        companyName: 'SIRKET_ADI',
+        companyCode: 'SIRKET_KODU'
+    )
+    ->test(false)
+    ->kargoTakip('BARCODE_1001');
+
+$takipLink = MPLogistics::hepsijet()
+    ->account(
+        username: 'HEPSIJET_USERNAME',
+        password: 'HEPSIJET_PASSWORD',
+        companyName: 'SIRKET_ADI',
+        companyCode: 'SIRKET_KODU'
+    )
+    ->test(false)
+    ->takipLinkOlustur([
+        'customerDeliveryNo' => 'BARCODE_1001',
+    ]);
+
+$sil = MPLogistics::hepsijet()
+    ->account(
+        username: 'HEPSIJET_USERNAME',
+        password: 'HEPSIJET_PASSWORD',
+        companyName: 'SIRKET_ADI',
+        companyCode: 'SIRKET_KODU'
+    )
+    ->test(false)
+    ->kargoSil('BARCODE_1001');
+```
+
+- HepsiJet token temp dosyada cachelenir (`30 dakika`).
+- Token bitimine `5 dakika` kala yenilenir.
+- Istersen `payloadRaw([...])` ile HepsiJet'e ham payload da gonderebilirsin.
