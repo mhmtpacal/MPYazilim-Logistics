@@ -1,0 +1,16 @@
+{
+  "name": "mpyazilim/logistics",
+  "description": "Coklu kargo API kutuphanesi",
+  "type": "library",
+  "license": "proprietary",
+  "autoload": {
+    "psr-4": {
+      "MPYazilim\\Logistics\\": "src/"
+    }
+  },
+  "require": {
+    "ext-soap": "*"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
