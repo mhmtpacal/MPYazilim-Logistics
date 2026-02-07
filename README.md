@@ -1,6 +1,22 @@
 ﻿# MPYazilim-Logistics
 Coklu kargo API kutuphanesi.
 
+## Desteklenen Kargolar
+
+| Kargo | Gonderi (`send`) | Iade (`return`) | Takip | Silme/Iptal | Not |
+|---|---|---|---|---|---|
+| PTT | Var | Var | Var (`barkodTakip`, `referansTakip`) | Var (`kargoSil`) | SOAP |
+| DHL (MNG) | Var | Var | Var (`kargoDurum`, `kargoHareketleri`) | Yok | REST + token |
+| HepsiJet | Var | Yok | Var (`kargoTakip`) | Var (`kargoSil`) | REST + token |
+| Aras Kargo | Var | `send` ile ayni akis | Var (`kargoTakip`) | Var (`barkodSil`) | SOAP |
+| UPS | Var | Yok | Var (`kargoTakip`) | Yok | SOAP + session |
+
+## Test Durumu
+
+- Bu repoda su an otomatik entegrasyon testi yok.
+- Yukaridaki tum entegrasyonlar icin canli/sandbox ortamda uctan uca test yapilmadi.
+- Ozellikler uygulandi, ancak servis bazli dogrulama (gercek API cevabiyla) henuz tamamlanmadi.
+
 ## Kurulum
 
 ```bash
@@ -339,3 +355,117 @@ $sil = MPLogistics::hepsijet()
 - HepsiJet token temp dosyada cachelenir (`30 dakika`).
 - Token bitimine `5 dakika` kala yenilenir.
 - Istersen `payloadRaw([...])` ile HepsiJet'e ham payload da gonderebilirsin.
+
+---
+
+## Aras Kargo Entegrasyonu
+
+```php
+<?php
+
+use MPYazilim\Logistics\MPLogistics;
+
+$resp = MPLogistics::aras()
+    ->account(
+        username: 'ARAS_USERNAME',
+        password: 'ARAS_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->payload(
+        tradingWaybillNumber: 'REF-1001',
+        integrationCode: '1001',
+        receiverName: 'Ad Soyad',
+        receiverAddress: 'Mahalle Adres Ilce/Il',
+        receiverPhone1: '905551112233',
+        receiverCityName: 'ISTANBUL',
+        receiverTownName: 'KADIKOY',
+        payorTypeCode: 1,
+        isWorldWide: 0,
+        isCod: 0,
+        codAmount: 0,
+        codCollectionType: 0,
+        barcodeNumber: 'BARCODE_1001'
+    )
+    ->send();
+
+$takip = MPLogistics::aras()
+    ->account(
+        username: 'ARAS_USERNAME',
+        password: 'ARAS_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->kargoTakip((string) $siparisId);
+
+$sil = MPLogistics::aras()
+    ->account(
+        username: 'ARAS_USERNAME',
+        password: 'ARAS_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->barkodSil((string) $siparisId);
+```
+
+- Aras icin de diger kargolar gibi ana kullanim `account(...)->payload(...)->send()` seklindedir.
+- Dilersen Aras'a ham alan gondermek icin `payloadRaw([...])` kullanabilirsin.
+
+---
+
+## UPS Entegrasyonu
+
+```php
+<?php
+
+use MPYazilim\Logistics\MPLogistics;
+
+$resp = MPLogistics::ups()
+    ->account(
+        customerNumber: 'UPS_CUSTOMER_NUMBER',
+        username: 'UPS_USERNAME',
+        password: 'UPS_PASSWORD'
+    )
+    ->payload(
+        shipperAccountNumber: $customer,
+        shipperName: 'Firma Adi',
+        shipperAddress: 'Gonderici adresi',
+        shipperCityCode: 51,
+        shipperAreaCode: 701,
+        consigneeName: "{$adres->isim} {$adres->soyisim}",
+        consigneeContactName: "{$adres->isim} {$adres->soyisim}",
+        consigneeAddress: "{$adres->mahalle} {$adres->adres} {$adres->ilce}/{$adres->il}",
+        consigneeCityCode: $ilCode,
+        consigneeAreaCode: $ilceCode,
+        consigneePhoneNumber: $telefon,
+        consigneeMobilePhoneNumber: $telefon,
+        packageType: 'D',
+        serviceLevel: 3,
+        paymentType: 2,
+        idControlFlag: 0,
+        phonePrealertFlag: 0,
+        smsToShipper: 0,
+        smsToConsignee: 1,
+        insuranceValue: 0,
+        insuranceValueCurrency: 'TL',
+        numberOfPackages: 1,
+        descriptionOfGoods: '0.5',
+        length: 0.5,
+        height: 0.5,
+        width: 0.5,
+        valueOfGoods: $siparisTutari,
+        valueOfGoodsCurrency: 'TL',
+        valueOfGoodsPaymentType: $odemeSekli
+    )
+    ->send();
+
+$takip = MPLogistics::ups()
+    ->account(
+        customerNumber: 'UPS_CUSTOMER_NUMBER',
+        username: 'UPS_USERNAME',
+        password: 'UPS_PASSWORD'
+    )
+    ->kargoTakip('1Z999AA1234567890');
+```
+
+- UPS icin iade metodu yoktur.
+- Dilersen UPS'e ham alan gondermek icin `payloadRaw([...])` kullanabilirsin.
+
+
