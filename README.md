@@ -45,6 +45,24 @@ $response = MPLogistics::ptt()
     )
     ->test(false)
     ->send();
+
+$hareketler = MPLogistics::ptt()
+    ->account(
+        username: 'NORMAL_KULLANICI',
+        password: 'NORMAL_SIFRE',
+        postaCeki: 'POSTA_CEKI'
+    )
+    ->test(false)
+    ->kargoHareketleri('1234567890');
+
+$referansTakip = MPLogistics::ptt()
+    ->account(
+        username: 'NORMAL_KULLANICI',
+        password: 'NORMAL_SIFRE',
+        postaCeki: 'POSTA_CEKI'
+    )
+    ->test(false)
+    ->referansTakip('REF-1001');
 ```
 
 Iade gonderimi:
@@ -101,3 +119,133 @@ $response = MPLogistics::ptt()
 - `->return()` icin ayrica bir alan yok; iade bilgilerini dogrudan `account(username:, password:)` icine girersin.
 - `->return()` cagrildiginda `musteriId = username`, `->send()` cagrildiginda `musteriId = postaCeki` olarak gonderilir.
 - PTT test ortami icin `->test(true)` kullanilir ve otomatik olarak `...V2Test` / `...YuklemeTest` endpointlerine gider.
+
+## DHL (MNG) Entegrasyonu
+
+Normal gonderi:
+
+```php
+<?php
+
+use MPYazilim\Logistics\MPLogistics;
+
+$response = MPLogistics::dhl()
+    ->account(
+        username: 'MNG_CUSTOMER_NUMBER',
+        password: 'MNG_PASSWORD',
+        clientId: 'MNG_CLIENT_ID',
+        clientSecret: 'MNG_CLIENT_SECRET'
+    )
+    ->payload(
+        referenceId: 'REF-1001',
+        barcode: 'REF-1001',
+        isCOD: false,
+        codAmount: 0,
+        shipmentServiceType: 1,
+        packagingType: 1,
+        paymentType: 1,
+        deliveryType: 1,
+        content: '1001',
+        description: 'Order : 1001',
+        cityCode: 34,
+        cityName: 'ISTANBUL',
+        districtName: 'KADIKOY',
+        districtCode: 34001,
+        address: 'Mahalle Sokak No:1',
+        fullName: 'Ad Soyad',
+        mobilePhoneNumber: '905551112233',
+        pieceBarcode: 'Product',
+        pieceDesi: 0,
+        pieceKg: 0,
+        pieceContent: '',
+        smsPreference1: 0,
+        smsPreference2: 0,
+        smsPreference3: 0,
+        billOfLandingId: 'REF-1001',
+        marketPlaceShortCode: '',
+        marketPlaceSaleCode: '',
+        pudoId: '',
+        customerId: '',
+        refCustomerId: '',
+        bussinessPhoneNumber: '',
+        email: 'mail@ornek.com',
+        taxOffice: '',
+        taxNumber: '',
+        homePhoneNumber: ''
+    )
+    ->test(false)
+    ->send();
+
+$dhlHareket = MPLogistics::dhl()
+    ->account(
+        username: 'MNG_CUSTOMER_NUMBER',
+        password: 'MNG_PASSWORD',
+        clientId: 'MNG_CLIENT_ID',
+        clientSecret: 'MNG_CLIENT_SECRET'
+    )
+    ->test(false)
+    ->kargoHareketleri('REF-1001');
+
+$dhlDurum = MPLogistics::dhl()
+    ->account(
+        username: 'MNG_CUSTOMER_NUMBER',
+        password: 'MNG_PASSWORD',
+        clientId: 'MNG_CLIENT_ID',
+        clientSecret: 'MNG_CLIENT_SECRET'
+    )
+    ->test(false)
+    ->kargoDurum('REF-1001');
+```
+
+Iade gonderi:
+
+```php
+$response = MPLogistics::dhl()
+    ->account(
+        username: 'MNG_CUSTOMER_NUMBER',
+        password: 'MNG_PASSWORD',
+        clientId: 'MNG_CLIENT_ID',
+        clientSecret: 'MNG_CLIENT_SECRET'
+    )
+    ->payload(
+        referenceId: 'REF-1001',
+        barcode: 'REF-1001',
+        isCOD: false,
+        codAmount: 0,
+        shipmentServiceType: 1,
+        packagingType: 1,
+        paymentType: 2,
+        deliveryType: 1,
+        content: '1001',
+        description: 'Order : 1001',
+        cityCode: 34,
+        cityName: 'ISTANBUL',
+        districtName: 'KADIKOY',
+        districtCode: 34001,
+        address: 'Alici adresi',
+        fullName: 'Alici Ad Soyad',
+        mobilePhoneNumber: '905551112233',
+        shipper: [
+            'customerId' => '',
+            'refCustomerId' => '',
+            'cityCode' => 34,
+            'cityName' => 'ISTANBUL',
+            'districtName' => 'KADIKOY',
+            'districtCode' => 34001,
+            'address' => 'Gonderici adresi',
+            'bussinessPhoneNumber' => '',
+            'email' => 'mail@ornek.com',
+            'taxOffice' => '',
+            'taxNumber' => '',
+            'fullName' => 'Gonderici Ad Soyad',
+            'homePhoneNumber' => '',
+            'mobilePhoneNumber' => '905551112233',
+        ]
+    )
+    ->test(false)
+    ->return();
+```
+
+- `MPLogistics::dhl()` DHL olarak adlandirildi (MNG API endpointlerini kullanir).
+- `->return()` cagrisinda otomatik olarak `createReturnOrder` endpointine gider.
+- Token temp dosyada cachelenir (`30 dakika`), suresi dolmadan yeniden token istenmez.

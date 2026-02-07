@@ -9,7 +9,8 @@
     }
   },
   "require": {
-    "ext-soap": "*"
+    "ext-soap": "*",
+    "ext-curl": "*"
   },
   "minimum-stability": "stable",
   "prefer-stable": true

@@ -6,7 +6,7 @@ namespace MPYazilim\Logistics\Builders;
 
 use BadMethodCallException;
 use InvalidArgumentException;
-use MPYazilim\Logistics\Contracts\CarrierAdapterInterface;
+use MPYazilim\Logistics\Carriers\Ptt\PttCarrierAdapter;
 
 final class PttShipmentBuilder
 {
@@ -19,7 +19,7 @@ final class PttShipmentBuilder
     private bool $testMode = false;
 
     public function __construct(
-        private readonly CarrierAdapterInterface $adapter
+        private readonly PttCarrierAdapter $adapter
     ) {
     }
 
@@ -130,6 +130,46 @@ final class PttShipmentBuilder
     /**
      * @return array<string,mixed>
      */
+    public function barkodTakip(string $barcode): array
+    {
+        $this->assertAccountConfigured();
+        $this->assertNotEmpty($barcode, 'barcode');
+
+        return $this->adapter->barkodTakip(
+            (string) $this->account['username'],
+            (string) $this->account['password'],
+            $barcode,
+            $this->testMode
+        );
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function referansTakip(string $referansNo): array
+    {
+        $this->assertAccountConfigured();
+        $this->assertNotEmpty($referansNo, 'referansNo');
+
+        return $this->adapter->referansTakip(
+            (string) $this->account['username'],
+            (string) $this->account['password'],
+            $referansNo,
+            $this->testMode
+        );
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function kargoHareketleri(string $trackingNo): array
+    {
+        return $this->barkodTakip($trackingNo);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
     public function send(): array
     {
         return $this->adapter->send($this->account, $this->payload, $this->testMode, false);
@@ -160,6 +200,13 @@ final class PttShipmentBuilder
     {
         if (trim($value) === '') {
             throw new InvalidArgumentException(sprintf('%s bos birakilamaz', $field));
+        }
+    }
+
+    private function assertAccountConfigured(): void
+    {
+        if (!isset($this->account['username'], $this->account['password'], $this->account['posta_ceki'])) {
+            throw new InvalidArgumentException('Oncesinde account(...) cagrilmalidir');
         }
     }
 }
