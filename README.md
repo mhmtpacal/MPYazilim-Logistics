@@ -1,5 +1,5 @@
 ﻿# MPYazilim-Logistics
-Coklu kargo API kutuphanesi.
+Türkiye kargoları için toplu kargo paketi.
 
 ## Desteklenen Kargolar
 
