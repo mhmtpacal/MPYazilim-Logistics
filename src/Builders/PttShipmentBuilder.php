@@ -76,8 +76,7 @@ final class PttShipmentBuilder
             'aliciIlAdi' => $aliciIlAdi,
             'aliciIlceAdi' => $aliciIlceAdi,
             'aliciSms' => $aliciSms,
-            'rezerve1' => $rezerve1,
-            'odemesekli' => $odemesekli,
+            'rezerve1' => $rezerve1
         ] as $field => $value) {
             $this->assertNotEmpty($value, $field);
         }
