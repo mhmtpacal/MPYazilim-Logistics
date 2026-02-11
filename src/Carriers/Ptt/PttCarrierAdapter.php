@@ -37,7 +37,7 @@ final class PttCarrierAdapter implements CarrierAdapterInterface
                     'gonderiTip' => $data['gonderiTip'],
                     'gonderiTur' => $data['gonderiTur'],
                     'kullanici' => $data['kullanici'] ?? 'PttWs',
-                    'musteriId' => $isReturn ? $auth['username'] : $auth['posta_ceki'],
+                    'musteriId' => $auth['username'],
                     'sifre' => $auth['password'],
                     'dongu' => $data['dongu'],
                 ],
