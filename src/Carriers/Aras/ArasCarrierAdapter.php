@@ -13,11 +13,15 @@ use Throwable;
 
 final class ArasCarrierAdapter implements CarrierAdapterInterface
 {
-    private const ORDER_WSDL = 'https://customerws.araskargo.com.tr/arascargoservice.asmx?WSDL';
-    private const QUERY_WSDL = 'https://customerservices.araskargo.com.tr/ArasCargoCustomerIntegrationService/ArasCargoIntegrationService.svc?wsdl';
+    private const ORDER_WSDL_LIVE = 'https://customerws.araskargo.com.tr/arascargoservice.asmx?WSDL';
+    private const ORDER_WSDL_TEST = 'https://customerservicestest.araskargo.com.tr/arascargoservice/arascargoservice.asmx?WSDL';
+    private const QUERY_WSDL_LIVE = 'https://customerservices.araskargo.com.tr/ArasCargoCustomerIntegrationService/ArasCargoIntegrationService.svc?wsdl';
+    private const QUERY_WSDL_TEST = 'https://customerservicestest.araskargo.com.tr/ArasCargoCustomerIntegrationService/ArasCargoIntegrationService.svc?wsdl';
 
-    private ?SoapClient $orderClient = null;
-    private ?SoapClient $queryClient = null;
+    private ?SoapClient $orderClientLive = null;
+    private ?SoapClient $orderClientTest = null;
+    private ?SoapClient $queryClientLive = null;
+    private ?SoapClient $queryClientTest = null;
 
     /**
      * @param array<string,mixed> $account
@@ -30,7 +34,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         $order = $this->normalizeOrderPayload($payload, $auth);
 
         try {
-            $response = $this->orderClient()->SetOrder([
+            $response = $this->orderClient($testMode)->SetOrder([
                 'orderInfo' => ['Order' => $order],
                 'userName' => $auth['username'],
                 'password' => $auth['password'],
@@ -50,7 +54,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
      * @param array<string,mixed> $account
      * @return array<string,mixed>
      */
-    public function kargoTakip(array $account, string $trackingNo): array
+    public function kargoTakip(array $account, string $trackingNo, bool $testMode = false): array
     {
         $auth = $this->resolveAccount($account);
         $trackingNo = trim($trackingNo);
@@ -71,7 +75,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             . '</QueryInfo>';
 
         try {
-            $response = $this->queryClient()->GetQueryXML([
+            $response = $this->queryClient($testMode)->GetQueryXML([
                 'loginInfo' => $loginInfo,
                 'queryInfo' => $queryInfo,
             ]);
@@ -103,7 +107,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
      * @param array<string,mixed> $account
      * @return array<string,mixed>
      */
-    public function barkodSil(array $account, string $integrationCode): array
+    public function barkodSil(array $account, string $integrationCode, bool $testMode = false): array
     {
         $auth = $this->resolveAccount($account);
         $integrationCode = trim($integrationCode);
@@ -112,7 +116,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         }
 
         try {
-            $response = $this->orderClient()->CancelDispatch([
+            $response = $this->orderClient($testMode)->CancelDispatch([
                 'userName' => $auth['username'],
                 'password' => $auth['password'],
                 'integrationCode' => $integrationCode,
@@ -124,26 +128,42 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         }
     }
 
-    private function orderClient(): SoapClient
+    private function orderClient(bool $testMode): SoapClient
     {
-        if ($this->orderClient instanceof SoapClient) {
-            return $this->orderClient;
+        if ($testMode) {
+            if ($this->orderClientTest instanceof SoapClient) {
+                return $this->orderClientTest;
+            }
+
+            $this->orderClientTest = $this->soap(self::ORDER_WSDL_TEST);
+            return $this->orderClientTest;
         }
 
-        $this->orderClient = $this->soap(self::ORDER_WSDL);
+        if ($this->orderClientLive instanceof SoapClient) {
+            return $this->orderClientLive;
+        }
 
-        return $this->orderClient;
+        $this->orderClientLive = $this->soap(self::ORDER_WSDL_LIVE);
+        return $this->orderClientLive;
     }
 
-    private function queryClient(): SoapClient
+    private function queryClient(bool $testMode): SoapClient
     {
-        if ($this->queryClient instanceof SoapClient) {
-            return $this->queryClient;
+        if ($testMode) {
+            if ($this->queryClientTest instanceof SoapClient) {
+                return $this->queryClientTest;
+            }
+
+            $this->queryClientTest = $this->soap(self::QUERY_WSDL_TEST);
+            return $this->queryClientTest;
         }
 
-        $this->queryClient = $this->soap(self::QUERY_WSDL);
+        if ($this->queryClientLive instanceof SoapClient) {
+            return $this->queryClientLive;
+        }
 
-        return $this->queryClient;
+        $this->queryClientLive = $this->soap(self::QUERY_WSDL_LIVE);
+        return $this->queryClientLive;
     }
 
     private function soap(string $wsdl): SoapClient
@@ -215,19 +235,17 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             'ReceiverPhone1' => '',
             'ReceiverCityName' => '',
             'ReceiverTownName' => '',
-            'PayorTypeCode' => 0,
+            'PayorTypeCode' => 1,
             'IsWorldWide' => 0,
             'IsCod' => 0,
             'CodAmount' => 0,
             'CodCollectionType' => 0,
-            'PieceDetails' => ['BarcodeNumber' => ''],
+            'PieceDetails' => [],
         ];
 
         $normalized = array_merge($defaults, $payload);
 
-        if (!isset($normalized['PieceDetails']) || !is_array($normalized['PieceDetails'])) {
-            $normalized['PieceDetails'] = ['BarcodeNumber' => ''];
-        }
+        $normalized['PieceDetails'] = $this->normalizePieceDetails($normalized['PieceDetails'] ?? []);
 
         $required = [
             'TradingWaybillNumber',
@@ -246,7 +264,168 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             }
         }
 
+        $this->assertStringLength((string) $normalized['TradingWaybillNumber'], 'TradingWaybillNumber', 1, 16);
+        $this->assertStringLength((string) $normalized['IntegrationCode'], 'IntegrationCode', 2, 32);
+        $this->assertStringLength((string) $normalized['ReceiverName'], 'ReceiverName', 1, 100);
+        $this->assertStringLength((string) $normalized['ReceiverAddress'], 'ReceiverAddress', 1, 250);
+        $this->assertStringLength((string) $normalized['ReceiverCityName'], 'ReceiverCityName', 1, 40);
+        $this->assertStringLength((string) $normalized['ReceiverTownName'], 'ReceiverTownName', 1, 16);
+
+        $this->assertPhoneNumber((string) $normalized['ReceiverPhone1'], 'ReceiverPhone1');
+        $this->assertOptionalPhoneNumber($normalized['ReceiverPhone2'] ?? null, 'ReceiverPhone2');
+        $this->assertOptionalPhoneNumber($normalized['ReceiverPhone3'] ?? null, 'ReceiverPhone3');
+
+        $normalized['PayorTypeCode'] = $this->assertInInt($normalized['PayorTypeCode'] ?? null, 'PayorTypeCode', [1, 2]);
+        $normalized['IsWorldWide'] = $this->assertInInt($normalized['IsWorldWide'] ?? null, 'IsWorldWide', [0, 1]);
+        $normalized['IsCod'] = $this->assertInInt($normalized['IsCod'] ?? null, 'IsCod', [0, 1]);
+
+        if (array_key_exists('PieceCount', $normalized) && $normalized['PieceCount'] !== '' && $normalized['PieceCount'] !== null) {
+            $pieceCount = filter_var($normalized['PieceCount'], FILTER_VALIDATE_INT);
+            if ($pieceCount === false || $pieceCount < 1 || $pieceCount > 99) {
+                throw new InvalidArgumentException('payload.PieceCount 1-99 araliginda integer olmalidir');
+            }
+            $normalized['PieceCount'] = $pieceCount;
+        }
+
+        $pieceDetails = $normalized['PieceDetails']['PieceDetail'] ?? [];
+        if (is_array($pieceDetails) && $pieceDetails !== []) {
+            $pieceCountFromDetails = count($pieceDetails);
+
+            if (!isset($normalized['PieceCount'])) {
+                $normalized['PieceCount'] = $pieceCountFromDetails;
+            } elseif ((int) $normalized['PieceCount'] !== $pieceCountFromDetails) {
+                throw new InvalidArgumentException('payload.PieceCount ile PieceDetails adetleri eslesmelidir');
+            }
+        } else {
+            unset($normalized['PieceDetails']);
+        }
+
+        if ((int) $normalized['IsCod'] === 1) {
+            $normalized['CodCollectionType'] = $this->assertInInt($normalized['CodCollectionType'] ?? null, 'CodCollectionType', [0, 1]);
+            if (!is_numeric($normalized['CodAmount'] ?? null)) {
+                throw new InvalidArgumentException('payload.CodAmount sayisal olmalidir');
+            }
+
+            $codAmount = (float) $normalized['CodAmount'];
+            if ($codAmount <= 5 || $codAmount > 5000) {
+                throw new InvalidArgumentException('payload.CodAmount 5\'ten buyuk ve 5000\'den kucuk/esit olmalidir');
+            }
+            $normalized['CodAmount'] = $codAmount;
+
+            if ((int) $normalized['PayorTypeCode'] === 2) {
+                throw new InvalidArgumentException('Alici odemeli tahsilatli kargo desteklenmez (PayorTypeCode=2, IsCod=1)');
+            }
+        } else {
+            $normalized['CodAmount'] = is_numeric($normalized['CodAmount'] ?? null) ? (float) $normalized['CodAmount'] : 0.0;
+            $normalized['CodCollectionType'] = 0;
+        }
+
         return $normalized;
+    }
+
+    /**
+     * @param mixed $pieceDetails
+     * @return array{PieceDetail:array<int,array<string,mixed>>}
+     */
+    private function normalizePieceDetails(mixed $pieceDetails): array
+    {
+        if (!is_array($pieceDetails) || $pieceDetails === []) {
+            return ['PieceDetail' => []];
+        }
+
+        if (isset($pieceDetails['PieceDetail']) && is_array($pieceDetails['PieceDetail'])) {
+            $details = $pieceDetails['PieceDetail'];
+        } else {
+            $details = $pieceDetails;
+        }
+
+        $isAssoc = array_keys($details) !== range(0, count($details) - 1);
+        if ($isAssoc) {
+            $details = [$details];
+        }
+
+        $normalized = [];
+        foreach ($details as $index => $detail) {
+            if (!is_array($detail)) {
+                throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d] gecerli bir nesne olmalidir', $index));
+            }
+
+            $barcode = trim((string) ($detail['BarcodeNumber'] ?? ''));
+            if ($barcode === '') {
+                throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d].BarcodeNumber zorunludur', $index));
+            }
+            $this->assertStringLength($barcode, 'PieceDetails.BarcodeNumber', 1, 64);
+
+            $item = ['BarcodeNumber' => $barcode];
+
+            if (array_key_exists('ProductNumber', $detail) && $detail['ProductNumber'] !== null && $detail['ProductNumber'] !== '') {
+                $productNumber = (string) $detail['ProductNumber'];
+                $this->assertStringLength($productNumber, 'PieceDetails.ProductNumber', 1, 32);
+                $item['ProductNumber'] = $productNumber;
+            }
+
+            if (array_key_exists('Description', $detail) && $detail['Description'] !== null && $detail['Description'] !== '') {
+                $description = (string) $detail['Description'];
+                $this->assertStringLength($description, 'PieceDetails.Description', 1, 64);
+                $item['Description'] = $description;
+            }
+
+            if (array_key_exists('Weight', $detail) && $detail['Weight'] !== null && $detail['Weight'] !== '') {
+                if (!is_numeric($detail['Weight'])) {
+                    throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d].Weight sayisal olmalidir', $index));
+                }
+                $item['Weight'] = (string) (float) $detail['Weight'];
+            }
+
+            if (array_key_exists('VolumetricWeight', $detail) && $detail['VolumetricWeight'] !== null && $detail['VolumetricWeight'] !== '') {
+                if (!is_numeric($detail['VolumetricWeight'])) {
+                    throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d].VolumetricWeight sayisal olmalidir', $index));
+                }
+                $item['VolumetricWeight'] = (string) (float) $detail['VolumetricWeight'];
+            }
+
+            $normalized[] = $item;
+        }
+
+        return ['PieceDetail' => $normalized];
+    }
+
+    private function assertStringLength(string $value, string $field, int $min, int $max): void
+    {
+        $length = strlen($value);
+        if ($length < $min || $length > $max) {
+            throw new InvalidArgumentException(sprintf('payload.%s uzunlugu %d-%d araliginda olmalidir', $field, $min, $max));
+        }
+    }
+
+    private function assertPhoneNumber(string $value, string $field): void
+    {
+        if (!preg_match('/^\d{10}$/', $value)) {
+            throw new InvalidArgumentException(sprintf('payload.%s 10 haneli sayisal deger olmalidir', $field));
+        }
+    }
+
+    private function assertOptionalPhoneNumber(mixed $value, string $field): void
+    {
+        if ($value === null || $value === '') {
+            return;
+        }
+
+        $phone = (string) $value;
+        $this->assertPhoneNumber($phone, $field);
+    }
+
+    /**
+     * @param array<int,int> $allowed
+     */
+    private function assertInInt(mixed $value, string $field, array $allowed): int
+    {
+        $intVal = filter_var($value, FILTER_VALIDATE_INT);
+        if ($intVal === false || !in_array($intVal, $allowed, true)) {
+            throw new InvalidArgumentException(sprintf('payload.%s sadece [%s] degerlerini alabilir', $field, implode(', ', $allowed)));
+        }
+
+        return $intVal;
     }
 
     /**

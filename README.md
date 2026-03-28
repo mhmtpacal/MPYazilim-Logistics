@@ -371,12 +371,13 @@ $resp = MPLogistics::aras()
         password: 'ARAS_PASSWORD',
         customerCode: 'ARAS_CUSTOMER_CODE'
     )
+    ->test(false) // true: test, false: canli
     ->payload(
         tradingWaybillNumber: 'REF-1001',
         integrationCode: '1001',
         receiverName: 'Ad Soyad',
         receiverAddress: 'Mahalle Adres Ilce/Il',
-        receiverPhone1: '905551112233',
+        receiverPhone1: '2121111111', // 10 hane sayisal
         receiverCityName: 'ISTANBUL',
         receiverTownName: 'KADIKOY',
         payorTypeCode: 1,
@@ -394,6 +395,7 @@ $takip = MPLogistics::aras()
         password: 'ARAS_PASSWORD',
         customerCode: 'ARAS_CUSTOMER_CODE'
     )
+    ->test(false)
     ->kargoTakip((string) $siparisId);
 
 $sil = MPLogistics::aras()
@@ -402,11 +404,43 @@ $sil = MPLogistics::aras()
         password: 'ARAS_PASSWORD',
         customerCode: 'ARAS_CUSTOMER_CODE'
     )
+    ->test(false)
     ->barkodSil((string) $siparisId);
+
+$respRaw = MPLogistics::aras()
+    ->account(
+        username: 'ARAS_USERNAME',
+        password: 'ARAS_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->test(false)
+    ->payloadRaw([
+        'TradingWaybillNumber' => 'REF-1002',
+        'IntegrationCode' => '1002',
+        'ReceiverName' => 'Ad Soyad',
+        'ReceiverAddress' => 'Mahalle Adres Ilce/Il',
+        'ReceiverPhone1' => '2121111111',
+        'ReceiverCityName' => 'ISTANBUL',
+        'ReceiverTownName' => 'KADIKOY',
+        'PayorTypeCode' => 1,
+        'IsWorldWide' => 0,
+        'IsCod' => 0,
+        'PieceCount' => 2,
+        'PieceDetails' => [
+            'PieceDetail' => [
+                ['BarcodeNumber' => 'BARCODE_1002_1', 'Weight' => '1', 'VolumetricWeight' => '1'],
+                ['BarcodeNumber' => 'BARCODE_1002_2', 'Weight' => '1', 'VolumetricWeight' => '1'],
+            ],
+        ],
+    ])
+    ->send();
 ```
 
 - Aras icin de diger kargolar gibi ana kullanim `account(...)->payload(...)->send()` seklindedir.
 - Dilersen Aras'a ham alan gondermek icin `payloadRaw([...])` kullanabilirsin.
+- `test(true)` kullanildiginda Aras test servislerine, `test(false)` kullanildiginda canli servislere gider.
+- `kargoTakip` ve `barkodSil` metotlari da `test()` secimini dikkate alir.
+- `PieceDetails` alanini ham payload ile gonderirken dokumandaki gibi `PieceDetail[]` listesi formatini kullan.
 
 ---
 

@@ -85,8 +85,15 @@ final class ArasShipmentBuilder
             'IsCod' => $isCod,
             'CodAmount' => $codAmount,
             'CodCollectionType' => $codCollectionType,
-            'PieceDetails' => ['BarcodeNumber' => $barcodeNumber],
         ];
+        if (trim($barcodeNumber) !== '') {
+            $this->payload['PieceCount'] = 1;
+            $this->payload['PieceDetails'] = [
+                'PieceDetail' => [
+                    ['BarcodeNumber' => $barcodeNumber],
+                ],
+            ];
+        }
 
         return $this;
     }
@@ -126,7 +133,7 @@ final class ArasShipmentBuilder
         $this->assertAccountConfigured();
         $this->assertNotEmpty($trackingNo, 'trackingNo');
 
-        return $this->adapter->kargoTakip($this->account, $trackingNo);
+        return $this->adapter->kargoTakip($this->account, $trackingNo, $this->testMode);
     }
 
     /**
@@ -137,7 +144,7 @@ final class ArasShipmentBuilder
         $this->assertAccountConfigured();
         $this->assertNotEmpty($integrationCode, 'integrationCode');
 
-        return $this->adapter->barkodSil($this->account, $integrationCode);
+        return $this->adapter->barkodSil($this->account, $integrationCode, $this->testMode);
     }
 
     /**
