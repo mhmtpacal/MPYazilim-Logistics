@@ -68,6 +68,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
     {
         $auth = $this->resolveAccount($account);
         $trackingNo = trim($trackingNo);
+        $client = $this->queryClient($testMode);
 
         if ($trackingNo === '') {
             return $this->emptyTrackingResult();
@@ -81,13 +82,23 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
         $queryInfo = '<QueryInfo>'
             . '<QueryType>39</QueryType>'
+            . '<CustomerCode>' . htmlspecialchars($auth['customer_code'], ENT_XML1) . '</CustomerCode>'
             . '<IntegrationCode>' . htmlspecialchars($trackingNo, ENT_XML1) . '</IntegrationCode>'
             . '</QueryInfo>';
 
         try {
-            $response = $this->queryClient($testMode)->GetQueryXML([
-                'loginInfo' => $loginInfo,
-                'queryInfo' => $queryInfo,
+            $response = $client->__soapCall('GetQueryXML', [
+                new \SoapVar(
+                    '<tem:GetQueryXML xmlns:tem="http://tempuri.org/">'
+                    . '<tem:loginInfo><![CDATA[' . $loginInfo . ']]></tem:loginInfo>'
+                    . '<tem:queryInfo><![CDATA[' . $queryInfo . ']]></tem:queryInfo>'
+                    . '</tem:GetQueryXML>',
+                    XSD_ANYXML
+                ),
+            ]);
+            $this->logSoapExchange($client, 'GetQueryXML', [
+                'testMode' => $testMode,
+                'integrationCode' => $trackingNo,
             ]);
 
             $xmlStr = isset($response->GetQueryXMLResult) ? (string) $response->GetQueryXMLResult : '';
@@ -109,6 +120,11 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 'Durum' => (string) ($collection->DURUMU ?? ''),
             ];
         } catch (Throwable $e) {
+            $this->logSoapExchange($client, 'GetQueryXML', [
+                'testMode' => $testMode,
+                'integrationCode' => $trackingNo,
+                'error' => $e->getMessage(),
+            ]);
             throw new RuntimeException('Aras KargoTakip hatasi [' . $trackingNo . ']: ' . $e->getMessage(), 0, $e);
         }
     }
