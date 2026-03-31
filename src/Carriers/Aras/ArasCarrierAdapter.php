@@ -32,12 +32,17 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
     {
         $auth = $this->resolveAccount($account);
         $order = $this->normalizeOrderPayload($payload, $auth);
+        $client = $this->orderClient($testMode);
 
         try {
-            $response = $this->orderClient($testMode)->SetOrder([
+            $response = $client->SetOrder([
                 'orderInfo' => ['Order' => $order],
                 'userName' => $auth['username'],
                 'password' => $auth['password'],
+            ]);
+            $this->logSoapExchange($client, 'SetOrder', [
+                'testMode' => $testMode,
+                'integrationCode' => (string) ($order['IntegrationCode'] ?? ''),
             ]);
 
             if (!isset($response->SetOrderResult->OrderResultInfo)) {
@@ -46,6 +51,11 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
             return (array) $response->SetOrderResult->OrderResultInfo;
         } catch (Throwable $e) {
+            $this->logSoapExchange($client, 'SetOrder', [
+                'testMode' => $testMode,
+                'integrationCode' => (string) ($order['IntegrationCode'] ?? ''),
+                'error' => $e->getMessage(),
+            ]);
             throw new RuntimeException('Aras KargoyaGonder hatasi: ' . $e->getMessage(), 0, $e);
         }
     }
@@ -114,16 +124,26 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         if ($integrationCode === '') {
             throw new InvalidArgumentException('integrationCode bos birakilamaz');
         }
+        $client = $this->orderClient($testMode);
 
         try {
-            $response = $this->orderClient($testMode)->CancelDispatch([
+            $response = $client->CancelDispatch([
                 'userName' => $auth['username'],
                 'password' => $auth['password'],
+                'integrationCode' => $integrationCode,
+            ]);
+            $this->logSoapExchange($client, 'CancelDispatch', [
+                'testMode' => $testMode,
                 'integrationCode' => $integrationCode,
             ]);
 
             return (array) $response;
         } catch (Throwable $e) {
+            $this->logSoapExchange($client, 'CancelDispatch', [
+                'testMode' => $testMode,
+                'integrationCode' => $integrationCode,
+                'error' => $e->getMessage(),
+            ]);
             throw new RuntimeException('Aras BarkodSil hatasi [' . $integrationCode . ']: ' . $e->getMessage(), 0, $e);
         }
     }
@@ -180,13 +200,69 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         ]);
 
         return new SoapClient($wsdl, [
-            'trace' => 0,
+            'trace' => 1,
             'exceptions' => true,
             'connection_timeout' => 3,
             'cache_wsdl' => WSDL_CACHE_BOTH,
             'stream_context' => $context,
             'keep_alive' => false,
         ]);
+    }
+
+    private function soapLogPath(): string
+    {
+        if (defined('WRITEPATH')) {
+            return rtrim((string) WRITEPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'aras-soap.log';
+        }
+
+        return getcwd() . DIRECTORY_SEPARATOR . 'writable' . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'aras-soap.log';
+    }
+
+    /**
+     * @param array<string,mixed> $context
+     */
+    private function logSoapExchange(SoapClient $client, string $action, array $context = []): void
+    {
+        $requestXml = method_exists($client, '__getLastRequest') ? (string) $client->__getLastRequest() : '';
+        $responseXml = method_exists($client, '__getLastResponse') ? (string) $client->__getLastResponse() : '';
+        $requestHeaders = method_exists($client, '__getLastRequestHeaders') ? (string) $client->__getLastRequestHeaders() : '';
+        $responseHeaders = method_exists($client, '__getLastResponseHeaders') ? (string) $client->__getLastResponseHeaders() : '';
+        $path = $this->soapLogPath();
+        $dir = dirname($path);
+
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+
+        $entry = [
+            '=== ' . date('Y-m-d H:i:s') . ' Aras SOAP ' . $action . ' ===',
+            'Context: ' . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'RequestHeaders:',
+            $this->maskSoapSecrets($requestHeaders),
+            'RequestXml:',
+            $this->maskSoapSecrets($requestXml),
+            'ResponseHeaders:',
+            $responseHeaders,
+            'ResponseXml:',
+            $this->maskSoapSecrets($responseXml),
+            '',
+        ];
+
+        @error_log(implode(PHP_EOL, $entry) . PHP_EOL, 3, $path);
+    }
+
+    private function maskSoapSecrets(string $xml): string
+    {
+        if ($xml === '') {
+            return $xml;
+        }
+
+        $patterns = [
+            '/(<Password>)(.*?)(<\/Password>)/is',
+            '/(<password>)(.*?)(<\/password>)/is',
+        ];
+
+        return (string) preg_replace($patterns, '$1***$3', $xml);
     }
 
     /**
