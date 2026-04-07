@@ -599,11 +599,51 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             return [];
         }
 
-        if (is_array($value)) {
-            return array_values($value);
+        $items = $this->extractSoapScalarValues($value);
+        if ($items !== []) {
+            return $items;
         }
 
-        return [$value];
+        if (is_scalar($value)) {
+            return [(string) $value];
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function extractSoapScalarValues(mixed $value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+
+        if (is_scalar($value)) {
+            $string = trim((string) $value);
+            return $string === '' ? [] : [$string];
+        }
+
+        if (is_array($value)) {
+            $results = [];
+            foreach ($value as $item) {
+                $results = [...$results, ...$this->extractSoapScalarValues($item)];
+            }
+
+            return $results;
+        }
+
+        if (is_object($value)) {
+            $results = [];
+            foreach (get_object_vars($value) as $item) {
+                $results = [...$results, ...$this->extractSoapScalarValues($item)];
+            }
+
+            return $results;
+        }
+
+        return [];
     }
 
     /**

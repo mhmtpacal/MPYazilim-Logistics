@@ -8,7 +8,7 @@ Türkiye kargoları için toplu kargo paketi.
 | PTT | Var | Var | Var (`barkodTakip`, `referansTakip`) | Var (`kargoSil`) | SOAP |
 | DHL (MNG) | Var | Var | Var (`kargoDurum`, `kargoHareketleri`) | Yok | REST + token |
 | HepsiJet | Var | Yok | Var (`kargoTakip`) | Var (`kargoSil`) | REST + token |
-| Aras Kargo | Var | `send` ile ayni akis | Var (`kargoTakip`) | Var (`barkodSil`) | SOAP |
+| Aras Kargo | Var | `send` ile ayni akis | Var (`kargoTakip`, `getBarcode`) | Var (`barkodSil`) | SOAP |
 | UPS | Var | Yok | Var (`kargoTakip`) | Yok | SOAP + session |
 
 ## Test Durumu
@@ -136,6 +136,85 @@ $response = MPLogistics::ptt()
 - `->return()` cagrildiginda `musteriId = username`, `->send()` cagrildiginda `musteriId = postaCeki` olarak gonderilir.
 - PTT test ortami icin `->test(true)` kullanilir ve otomatik olarak `...V2Test` / `...YuklemeTest` endpointlerine gider.
 
+
+---
+
+## Aras Kargo
+
+```php
+<?php
+
+use MPYazilim\Logistics\MPLogistics;
+
+$response = MPLogistics::aras()
+    ->account(
+        username: 'ARAS_USERNAME',
+        password: 'ARAS_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->test(false)
+    ->getBarcode('8827930407131929');
+
+$imageResponse = MPLogistics::aras()
+    ->account(
+        username: 'ARAS_USERNAME',
+        password: 'ARAS_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->test(false)
+    ->getBarcodeImage('8827930407131929', __DIR__ . '/tmp');
+
+$imageDataUri = MPLogistics::aras()
+    ->account(
+        username: 'ARAS_USERNAME',
+        password: 'ARAS_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->test(false)
+    ->getBarcodeImageDataUri('8827930407131929');
+```
+
+- `getBarcode()` Aras servisinden etiket verisini alir.
+- `getBarcodeImage()` varsa ZPL cevabini PNG resme render eder, goruntu yonunu normalize eder ve istenirse diske kaydeder.
+- `getBarcodeImageDataUri()` ilk resmi direkt `<img src=\"...\">` icin uygun data URI formatinda dondurur.
+- `getBarcode()` donusunde su alanlar bulunabilir:
+
+```php
+[
+    'Images' => ['...'], // Aras direkt resim donerse base64 liste
+    'ZebraZpl' => ['^XA...^XZ'],
+    'ZebraEpl' => [],
+    'ZebraPdf' => [],
+    'BarcodeModelLst' => [
+        [
+            'BarcodeNo' => '8827930407131929',
+            'IntegrationCode' => '8827930407131929',
+        ],
+    ],
+    'Message' => '',
+    'ResultCode' => 0,
+]
+```
+
+- `getBarcodeImage()` donusunde yukaridaki alanlara ek olarak su alanlar da hazir gelir:
+
+```php
+[
+    'Images' => ['iVBORw0KGgoAAAANSUhEUgAA...'],
+    'ImageBase64' => 'iVBORw0KGgoAAAANSUhEUgAA...',
+    'ImageDataUri' => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...',
+    'SavedFiles' => ['/tmp/8827930407131929.png'],
+    'ImagePath' => '/tmp/8827930407131929.png',
+    'ZebraZpl' => ['^XA...^XZ'],
+    'ZebraEpl' => [],
+    'ZebraPdf' => [],
+    'BarcodeModelLst' => [],
+    'Message' => '',
+    'ResultCode' => 0,
+]
+```
+
+- Backend tarafinda en pratik kullanim genelde `ImageBase64`, `ImageDataUri` veya `ImagePath` alanlaridir.
 
 ---
 

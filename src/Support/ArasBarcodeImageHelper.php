@@ -31,6 +31,9 @@ final class ArasBarcodeImageHelper
         }
 
         $response['SavedFiles'] = self::saveImages($response['Images'] ?? [], $integrationCode, $saveDirectory);
+        $response['ImageDataUri'] = self::firstImageDataUri($response);
+        $response['ImageBase64'] = self::firstImageBase64($response);
+        $response['ImagePath'] = $response['SavedFiles'][0] ?? null;
 
         return $response;
     }
@@ -40,12 +43,25 @@ final class ArasBarcodeImageHelper
      */
     public static function firstImageDataUri(array $response): ?string
     {
-        $imageBase64 = $response['Images'][0] ?? null;
+        $imageBase64 = self::firstImageBase64($response);
         if (!is_string($imageBase64) || $imageBase64 === '') {
             return null;
         }
 
         return 'data:image/png;base64,' . $imageBase64;
+    }
+
+    /**
+     * @param array<string,mixed> $response
+     */
+    public static function firstImageBase64(array $response): ?string
+    {
+        $imageBase64 = $response['Images'][0] ?? null;
+        if (!is_string($imageBase64) || $imageBase64 === '') {
+            return null;
+        }
+
+        return $imageBase64;
     }
 
     public static function normalizeZplOrientation(string $zpl): string
@@ -179,7 +195,11 @@ final class ArasBarcodeImageHelper
      */
     private static function saveImages(mixed $images, string $integrationCode, ?string $saveDirectory): array
     {
-        if (!is_array($images) || $saveDirectory === null || !is_dir($saveDirectory)) {
+        if (!is_array($images) || $saveDirectory === null) {
+            return [];
+        }
+
+        if (!is_dir($saveDirectory) && !@mkdir($saveDirectory, 0777, true) && !is_dir($saveDirectory)) {
             return [];
         }
 
