@@ -164,6 +164,46 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         }
     }
 
+    /**
+     * @param array<string,mixed> $account
+     * @return array<string,mixed>
+     */
+    public function getBarcode(array $account, string $integrationCode, bool $testMode = false): array
+    {
+        $auth = $this->resolveAccount($account);
+        $integrationCode = trim($integrationCode);
+        if ($integrationCode === '') {
+            throw new InvalidArgumentException('integrationCode bos birakilamaz');
+        }
+        $client = $this->orderClient($testMode);
+
+        try {
+            $response = $client->GetBarcode([
+                'Username' => $auth['username'],
+                'Password' => $auth['password'],
+                'integrationCode' => $integrationCode,
+            ]);
+            $this->logSoapExchange($client, 'GetBarcode', [
+                'testMode' => $testMode,
+                'integrationCode' => $integrationCode,
+            ]);
+
+            $result = $response->GetBarcodeResult ?? null;
+            if (!$result) {
+                return [];
+            }
+
+            return $this->normalizeBarcodeResponse($result);
+        } catch (Throwable $e) {
+            $this->logSoapExchange($client, 'GetBarcode', [
+                'testMode' => $testMode,
+                'integrationCode' => $integrationCode,
+                'error' => $e->getMessage(),
+            ]);
+            throw new RuntimeException('Aras GetBarcode hatasi [' . $integrationCode . ']: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
     private function orderClient(bool $testMode): SoapClient
     {
         if ($testMode) {
@@ -532,5 +572,57 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             'Tutar' => '',
             'Durum' => '',
         ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function normalizeBarcodeResponse(object $result): array
+    {
+        return [
+            'Images' => $this->normalizeSoapScalarList($result->Images ?? null),
+            'ZebraZpl' => $this->normalizeSoapScalarList($result->ZebraZpl ?? null),
+            'ZebraEpl' => $this->normalizeSoapScalarList($result->ZebraEpl ?? null),
+            'ZebraPdf' => $this->normalizeSoapScalarList($result->ZebraPdf ?? null),
+            'BarcodeModelLst' => $this->normalizeSoapObjectList($result->BarcodeModelLst ?? null, 'BarcodeModel'),
+            'Message' => (string) ($result->Message ?? ''),
+            'ResultCode' => (int) ($result->ResultCode ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<int,mixed>
+     */
+    private function normalizeSoapScalarList(mixed $value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+
+        if (is_array($value)) {
+            return array_values($value);
+        }
+
+        return [$value];
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function normalizeSoapObjectList(mixed $value, string $property): array
+    {
+        if (!is_object($value) || !isset($value->{$property})) {
+            return [];
+        }
+
+        $items = $value->{$property};
+        if (!is_array($items)) {
+            $items = [$items];
+        }
+
+        return array_map(
+            static fn (mixed $item): array => is_object($item) ? get_object_vars($item) : (array) $item,
+            $items
+        );
     }
 }

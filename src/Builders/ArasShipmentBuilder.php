@@ -7,6 +7,7 @@ namespace MPYazilim\Logistics\Builders;
 use BadMethodCallException;
 use InvalidArgumentException;
 use MPYazilim\Logistics\Carriers\Aras\ArasCarrierAdapter;
+use MPYazilim\Logistics\Support\ArasBarcodeImageHelper;
 
 final class ArasShipmentBuilder
 {
@@ -145,6 +146,36 @@ final class ArasShipmentBuilder
         $this->assertNotEmpty($integrationCode, 'integrationCode');
 
         return $this->adapter->barkodSil($this->account, $integrationCode, $this->testMode);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function getBarcode(string $integrationCode): array
+    {
+        $this->assertAccountConfigured();
+        $this->assertNotEmpty($integrationCode, 'integrationCode');
+
+        return $this->adapter->getBarcode($this->account, $integrationCode, $this->testMode);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function getBarcodeImage(string $integrationCode, ?string $saveDirectory = null): array
+    {
+        return ArasBarcodeImageHelper::prepareResponse(
+            $this->getBarcode($integrationCode),
+            $integrationCode,
+            $saveDirectory
+        );
+    }
+
+    public function getBarcodeImageDataUri(string $integrationCode): ?string
+    {
+        return ArasBarcodeImageHelper::firstImageDataUri(
+            $this->getBarcodeImage($integrationCode)
+        );
     }
 
     /**
