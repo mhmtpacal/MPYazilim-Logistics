@@ -118,6 +118,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 'Desi' => (string) ($collection->KG_DESI ?? ''),
                 'Tutar' => (string) ($collection->TUTAR ?? ''),
                 'Durum' => (string) ($collection->DURUMU ?? ''),
+                'KargoTakipNo' => (string) ($collection->KARGO_TAKIP_NO ?? '')
             ];
         } catch (Throwable $e) {
             $this->logSoapExchange($client, 'GetQueryXML', [
