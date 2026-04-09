@@ -15,11 +15,15 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 {
     private const ORDER_WSDL_LIVE = 'https://customerws.araskargo.com.tr/arascargoservice.asmx?WSDL';
     private const ORDER_WSDL_TEST = 'https://customerservicestest.araskargo.com.tr/arascargoservice/arascargoservice.asmx?WSDL';
+    private const MP_ORDER_WSDL_LIVE = 'https://integration.araskargo.com.tr/mporder/IntegrationService.svc?wsdl';
+    private const MP_ORDER_WSDL_TEST = 'https://integrationtest.araskargo.com.tr/mpordertest/IntegrationService.svc?wsdl';
     private const QUERY_WSDL_LIVE = 'https://customerservices.araskargo.com.tr/ArasCargoCustomerIntegrationService/ArasCargoIntegrationService.svc?wsdl';
     private const QUERY_WSDL_TEST = 'https://customerservicestest.araskargo.com.tr/ArasCargoCustomerIntegrationService/ArasCargoIntegrationService.svc?wsdl';
 
     private ?SoapClient $orderClientLive = null;
     private ?SoapClient $orderClientTest = null;
+    private ?SoapClient $mpOrderClientLive = null;
+    private ?SoapClient $mpOrderClientTest = null;
     private ?SoapClient $queryClientLive = null;
     private ?SoapClient $queryClientTest = null;
 
@@ -31,19 +35,40 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
     public function send(array $account, array $payload, bool $testMode = false, bool $isReturn = false): array
     {
         $auth = $this->resolveAccount($account);
-        $order = $this->normalizeOrderPayload($payload, $auth);
-        $client = $this->orderClient($testMode);
+        $order = $isReturn
+            ? $this->normalizeMpOrderPayload($payload)
+            : $this->normalizeOrderPayload($payload, $auth);
+        $client = $isReturn
+            ? $this->mpOrderClient($testMode)
+            : $this->orderClient($testMode);
+        $action = $isReturn ? 'ArasMPOrder' : 'SetOrder';
 
         try {
-            $response = $client->SetOrder([
-                'orderInfo' => ['Order' => $order],
-                'userName' => $auth['username'],
-                'password' => $auth['password'],
-            ]);
-            $this->logSoapExchange($client, 'SetOrder', [
+            $response = $isReturn
+                ? $client->ArasMPOrder([
+                    'model' => $order,
+                    'customerInfo' => [
+                        'CustomerCode' => $auth['customer_code'],
+                        'Password' => $auth['password'],
+                        'UserName' => $auth['username'],
+                    ],
+                ])
+                : $client->SetOrder([
+                    'orderInfo' => ['Order' => $order],
+                    'userName' => $auth['username'],
+                    'password' => $auth['password'],
+                ]);
+            $this->logSoapExchange($client, $action, [
                 'testMode' => $testMode,
+                'isReturn' => $isReturn,
                 'integrationCode' => (string) ($order['IntegrationCode'] ?? ''),
             ]);
+
+            if ($isReturn) {
+                return $this->normalizeAnySoapResponse(
+                    $response->ArasMPOrderResult ?? $response
+                );
+            }
 
             if (!isset($response->SetOrderResult->OrderResultInfo)) {
                 return [];
@@ -51,8 +76,9 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
             return (array) $response->SetOrderResult->OrderResultInfo;
         } catch (Throwable $e) {
-            $this->logSoapExchange($client, 'SetOrder', [
+            $this->logSoapExchange($client, $action, [
                 'testMode' => $testMode,
+                'isReturn' => $isReturn,
                 'integrationCode' => (string) ($order['IntegrationCode'] ?? ''),
                 'error' => $e->getMessage(),
             ]);
@@ -241,6 +267,25 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
         $this->queryClientLive = $this->soap(self::QUERY_WSDL_LIVE);
         return $this->queryClientLive;
+    }
+
+    private function mpOrderClient(bool $testMode): SoapClient
+    {
+        if ($testMode) {
+            if ($this->mpOrderClientTest instanceof SoapClient) {
+                return $this->mpOrderClientTest;
+            }
+
+            $this->mpOrderClientTest = $this->soap(self::MP_ORDER_WSDL_TEST);
+            return $this->mpOrderClientTest;
+        }
+
+        if ($this->mpOrderClientLive instanceof SoapClient) {
+            return $this->mpOrderClientLive;
+        }
+
+        $this->mpOrderClientLive = $this->soap(self::MP_ORDER_WSDL_LIVE);
+        return $this->mpOrderClientLive;
     }
 
     private function soap(string $wsdl): SoapClient
@@ -523,6 +568,165 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         return ['PieceDetail' => $normalized];
     }
 
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private function normalizeMpOrderPayload(array $payload): array
+    {
+        $defaults = [
+            'CodeExpireDate' => '',
+            'ConfigurationId' => '',
+            'IntegrationCode' => '',
+            'LovCollectionType' => 1,
+            'LovPayOrType' => 1,
+            'MainServiceCode' => '',
+            'ExtServiceCodeList' => [],
+            'PieceCount' => 1,
+            'ReceiverAddressInfo' => [],
+            'SenderAddressInfo' => [],
+            'TradingWaybillNumber' => '',
+            'Volume' => null,
+            'Weight' => null,
+        ];
+
+        $normalized = array_merge($defaults, $payload);
+
+        foreach ([
+            'ConfigurationId',
+            'IntegrationCode',
+            'MainServiceCode',
+        ] as $field) {
+            $value = $normalized[$field] ?? null;
+            if (!is_scalar($value) || trim((string) $value) === '') {
+                throw new InvalidArgumentException(sprintf('payload.%s zorunludur', $field));
+            }
+        }
+
+        $this->assertStringLength((string) $normalized['ConfigurationId'], 'ConfigurationId', 1, 64);
+        $this->assertStringLength((string) $normalized['IntegrationCode'], 'IntegrationCode', 1, 64);
+        $this->assertStringLength((string) $normalized['MainServiceCode'], 'MainServiceCode', 1, 32);
+
+        if (($normalized['CodeExpireDate'] ?? '') !== '') {
+            $timestamp = strtotime((string) $normalized['CodeExpireDate']);
+            if ($timestamp === false) {
+                throw new InvalidArgumentException('payload.CodeExpireDate gecerli bir tarih olmalidir');
+            }
+
+            $normalized['CodeExpireDate'] = date('Y-m-d\TH:i:s', $timestamp);
+        } else {
+            unset($normalized['CodeExpireDate']);
+        }
+
+        $normalized['LovCollectionType'] = $this->assertPositiveInt($normalized['LovCollectionType'] ?? null, 'LovCollectionType');
+        $normalized['LovPayOrType'] = $this->assertPositiveInt($normalized['LovPayOrType'] ?? null, 'LovPayOrType');
+        $normalized['PieceCount'] = $this->assertPositiveInt($normalized['PieceCount'] ?? null, 'PieceCount');
+
+        $normalized['ReceiverAddressInfo'] = $this->normalizeMpAddressInfo(
+            $normalized['ReceiverAddressInfo'] ?? [],
+            'ReceiverAddressInfo'
+        );
+        $normalized['SenderAddressInfo'] = $this->normalizeMpAddressInfo(
+            $normalized['SenderAddressInfo'] ?? [],
+            'SenderAddressInfo'
+        );
+
+        $normalized['ExtServiceCodeList'] = $this->normalizeMpServiceCodes(
+            $normalized['ExtServiceCodeList'] ?? []
+        );
+
+        foreach (['Volume', 'Weight'] as $field) {
+            if (!array_key_exists($field, $normalized) || $normalized[$field] === null || $normalized[$field] === '') {
+                unset($normalized[$field]);
+                continue;
+            }
+
+            if (!is_numeric($normalized[$field])) {
+                throw new InvalidArgumentException(sprintf('payload.%s sayisal olmalidir', $field));
+            }
+
+            $normalized[$field] = (float) $normalized[$field];
+        }
+
+        if (($normalized['TradingWaybillNumber'] ?? '') === '') {
+            unset($normalized['TradingWaybillNumber']);
+        } else {
+            $this->assertStringLength((string) $normalized['TradingWaybillNumber'], 'TradingWaybillNumber', 1, 64);
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<string,mixed>
+     */
+    private function normalizeMpAddressInfo(mixed $value, string $field): array
+    {
+        if (!is_array($value)) {
+            throw new InvalidArgumentException(sprintf('payload.%s gecerli bir nesne olmalidir', $field));
+        }
+
+        $normalized = $value;
+
+        foreach (['Address', 'CityName', 'Name', 'TownName'] as $requiredField) {
+            $itemValue = $normalized[$requiredField] ?? null;
+            if (!is_scalar($itemValue) || trim((string) $itemValue) === '') {
+                throw new InvalidArgumentException(sprintf('payload.%s.%s zorunludur', $field, $requiredField));
+            }
+        }
+
+        $this->assertStringLength((string) $normalized['Address'], $field . '.Address', 1, 250);
+        $this->assertStringLength((string) $normalized['CityName'], $field . '.CityName', 1, 40);
+        $this->assertStringLength((string) $normalized['TownName'], $field . '.TownName', 1, 40);
+        $this->assertStringLength((string) $normalized['Name'], $field . '.Name', 1, 100);
+
+        foreach (['PhoneNumber', 'MobilePhone'] as $phoneField) {
+            if (!array_key_exists($phoneField, $normalized) || $normalized[$phoneField] === null || $normalized[$phoneField] === '') {
+                continue;
+            }
+
+            $digits = preg_replace('/\D+/', '', (string) $normalized[$phoneField]);
+            if (!is_string($digits) || $digits === '' || strlen($digits) < 10 || strlen($digits) > 11) {
+                throw new InvalidArgumentException(sprintf('payload.%s.%s 10-11 haneli sayisal deger olmalidir', $field, $phoneField));
+            }
+
+            $normalized[$phoneField] = $digits;
+        }
+
+        foreach (['AddressId', 'TaxNumber'] as $optionalField) {
+            if (array_key_exists($optionalField, $normalized) && $normalized[$optionalField] !== null) {
+                $normalized[$optionalField] = (string) $normalized[$optionalField];
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<string,array<int,string>>
+     */
+    private function normalizeMpServiceCodes(mixed $value): array
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return [];
+        }
+
+        $items = is_array($value) ? $value : [$value];
+        $normalized = [];
+
+        foreach ($items as $index => $item) {
+            if (!is_scalar($item) || trim((string) $item) === '') {
+                throw new InvalidArgumentException(sprintf('payload.ExtServiceCodeList[%d] bos olamaz', $index));
+            }
+
+            $normalized[] = trim((string) $item);
+        }
+
+        return ['string' => $normalized];
+    }
+
     private function assertStringLength(string $value, string $field, int $min, int $max): void
     {
         $length = strlen($value);
@@ -556,6 +760,16 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         $intVal = filter_var($value, FILTER_VALIDATE_INT);
         if ($intVal === false || !in_array($intVal, $allowed, true)) {
             throw new InvalidArgumentException(sprintf('payload.%s sadece [%s] degerlerini alabilir', $field, implode(', ', $allowed)));
+        }
+
+        return $intVal;
+    }
+
+    private function assertPositiveInt(mixed $value, string $field): int
+    {
+        $intVal = filter_var($value, FILTER_VALIDATE_INT);
+        if ($intVal === false || $intVal < 1) {
+            throw new InvalidArgumentException(sprintf('payload.%s pozitif integer olmalidir', $field));
         }
 
         return $intVal;
@@ -665,5 +879,51 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             static fn (mixed $item): array => is_object($item) ? get_object_vars($item) : (array) $item,
             $items
         );
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function normalizeAnySoapResponse(mixed $value): array
+    {
+        if (is_object($value)) {
+            return $this->normalizeAnySoapArray(get_object_vars($value));
+        }
+
+        if (is_array($value)) {
+            return $this->normalizeAnySoapArray($value);
+        }
+
+        if ($value === null) {
+            return [];
+        }
+
+        return ['value' => $value];
+    }
+
+    /**
+     * @param array<string|int,mixed> $value
+     * @return array<string,mixed>
+     */
+    private function normalizeAnySoapArray(array $value): array
+    {
+        $normalized = [];
+
+        foreach ($value as $key => $item) {
+            $normalized[(string) $key] = match (true) {
+                is_object($item) => $this->normalizeAnySoapResponse($item),
+                is_array($item) => array_is_list($item)
+                    ? array_map(
+                        fn (mixed $listItem): mixed => is_object($listItem) || is_array($listItem)
+                            ? $this->normalizeAnySoapResponse($listItem)
+                            : $listItem,
+                        $item
+                    )
+                    : $this->normalizeAnySoapArray($item),
+                default => $item,
+            };
+        }
+
+        return $normalized;
     }
 }

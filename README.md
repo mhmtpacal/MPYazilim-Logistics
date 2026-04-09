@@ -8,7 +8,7 @@ Türkiye kargoları için toplu kargo paketi.
 | PTT | Var | Var | Var (`barkodTakip`, `referansTakip`) | Var (`kargoSil`) | SOAP |
 | DHL (MNG) | Var | Var | Var (`kargoDurum`, `kargoHareketleri`) | Yok | REST + token |
 | HepsiJet | Var | Yok | Var (`kargoTakip`) | Var (`kargoSil`) | REST + token |
-| Aras Kargo | Var | `send` ile ayni akis | Var (`kargoTakip`, `getBarcode`) | Var (`barkodSil`) | SOAP |
+| Aras Kargo | Var | Var (`ArasMPOrder`) | Var (`kargoTakip`, `getBarcode`) | Var (`barkodSil`) | SOAP |
 | UPS | Var | Yok | Var (`kargoTakip`) | Yok | SOAP + session |
 
 ## Test Durumu
@@ -513,10 +513,53 @@ $respRaw = MPLogistics::aras()
         ],
     ])
     ->send();
+
+$returnResp = MPLogistics::aras()
+    ->account(
+        username: 'mporder',
+        password: 'ARAS_MPORDER_PASSWORD',
+        customerCode: 'ARAS_CUSTOMER_CODE'
+    )
+    ->test(false)
+    ->returnPayload(
+        configurationId: 'D564FFCA455BBC46BAE926EA74B15032',
+        integrationCode: '123456789',
+        collectionType: 1,
+        payorType: 2,
+        mainServiceCode: 'STNK',
+        pieceCount: 1,
+        receiverAddressInfo: [
+            'Address' => 'Aşağı Dudullu mah şahinler',
+            'AddressId' => '1CDABE4834FCC4448D38AC33F08F7849',
+            'CityName' => 'ISTANBUL',
+            'MobilePhone' => '05555555555',
+            'Name' => 'Gokhan YILMAZ',
+            'PhoneNumber' => '02155555555',
+            'TaxNumber' => '123456',
+            'TownName' => 'BEYKOZ',
+        ],
+        senderAddressInfo: [
+            'Address' => 'Aşağı Dudullu mah Sok No:3/6',
+            'AddressId' => '',
+            'CityName' => 'ISTANBUL',
+            'Name' => 'GONDERICI ADI',
+            'PhoneNumber' => '05324444444',
+            'TaxNumber' => '90060406218',
+            'TownName' => 'UMRANIYE',
+        ],
+        tradingWaybillNumber: '3792249',
+        volume: 1,
+        weight: 1,
+        codeExpireDate: '2023-09-16T02:36:50',
+        extServiceCodeList: ['AT']
+    )
+    ->return();
 ```
 
 - Aras icin de diger kargolar gibi ana kullanim `account(...)->payload(...)->send()` seklindedir.
 - Dilersen Aras'a ham alan gondermek icin `payloadRaw([...])` kullanabilirsin.
+- Iade akisi `->return()` / `->iade()` icinde `ArasMPOrder` servisine gider; bu akista `ConfigurationId`, adres nesneleri ve servis kodlari gerekir.
+- Iade icin pratik kullanim `returnPayload(...)` veya `iadePayload(...)` metodudur. Istersen ham `payloadRaw([...])` ile de `ArasMPOrder` alanlarini gonderebilirsin.
 - `test(true)` kullanildiginda Aras test servislerine, `test(false)` kullanildiginda canli servislere gider.
 - `kargoTakip` ve `barkodSil` metotlari da `test()` secimini dikkate alir.
 - `PieceDetails` alanini ham payload ile gonderirken dokumandaki gibi `PieceDetail[]` listesi formatini kullan.

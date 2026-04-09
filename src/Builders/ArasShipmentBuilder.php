@@ -109,6 +109,106 @@ final class ArasShipmentBuilder
         return $this;
     }
 
+    /**
+     * @param array<string,mixed> $receiverAddressInfo
+     * @param array<string,mixed> $senderAddressInfo
+     * @param array<int,string> $extServiceCodeList
+     */
+    public function returnPayload(
+        string $configurationId,
+        string|int $integrationCode,
+        int $collectionType,
+        int $payorType,
+        string $mainServiceCode,
+        int $pieceCount,
+        array $receiverAddressInfo,
+        array $senderAddressInfo,
+        string $tradingWaybillNumber = '',
+        int|float|string|null $volume = null,
+        int|float|string|null $weight = null,
+        string $codeExpireDate = '',
+        array $extServiceCodeList = []
+    ): self {
+        foreach ([
+            'configurationId' => $configurationId,
+            'integrationCode' => (string) $integrationCode,
+            'mainServiceCode' => $mainServiceCode,
+        ] as $field => $value) {
+            $this->assertNotEmpty($value, $field);
+        }
+
+        if ($pieceCount < 1) {
+            throw new InvalidArgumentException('pieceCount pozitif olmalidir');
+        }
+
+        $this->payload = [
+            'ConfigurationId' => $configurationId,
+            'IntegrationCode' => (string) $integrationCode,
+            'LovCollectionType' => $collectionType,
+            'LovPayOrType' => $payorType,
+            'MainServiceCode' => $mainServiceCode,
+            'ExtServiceCodeList' => $extServiceCodeList,
+            'PieceCount' => $pieceCount,
+            'ReceiverAddressInfo' => $receiverAddressInfo,
+            'SenderAddressInfo' => $senderAddressInfo,
+        ];
+
+        if (trim($tradingWaybillNumber) !== '') {
+            $this->payload['TradingWaybillNumber'] = $tradingWaybillNumber;
+        }
+
+        if ($volume !== null && $volume !== '') {
+            $this->payload['Volume'] = $volume;
+        }
+
+        if ($weight !== null && $weight !== '') {
+            $this->payload['Weight'] = $weight;
+        }
+
+        if (trim($codeExpireDate) !== '') {
+            $this->payload['CodeExpireDate'] = $codeExpireDate;
+        }
+
+        return $this;
+    }
+
+    /**
+     * @param array<string,mixed> $receiverAddressInfo
+     * @param array<string,mixed> $senderAddressInfo
+     * @param array<int,string> $extServiceCodeList
+     */
+    public function iadePayload(
+        string $configurationId,
+        string|int $integrationCode,
+        int $collectionType,
+        int $payorType,
+        string $mainServiceCode,
+        int $pieceCount,
+        array $receiverAddressInfo,
+        array $senderAddressInfo,
+        string $tradingWaybillNumber = '',
+        int|float|string|null $volume = null,
+        int|float|string|null $weight = null,
+        string $codeExpireDate = '',
+        array $extServiceCodeList = []
+    ): self {
+        return $this->returnPayload(
+            $configurationId,
+            $integrationCode,
+            $collectionType,
+            $payorType,
+            $mainServiceCode,
+            $pieceCount,
+            $receiverAddressInfo,
+            $senderAddressInfo,
+            $tradingWaybillNumber,
+            $volume,
+            $weight,
+            $codeExpireDate,
+            $extServiceCodeList
+        );
+    }
+
     public function test(bool $enabled = true): self
     {
         $this->testMode = $enabled;
@@ -183,7 +283,9 @@ final class ArasShipmentBuilder
      */
     public function iade(): array
     {
-        return $this->send();
+        $this->assertAccountConfigured();
+
+        return $this->adapter->send($this->account, $this->payload, $this->testMode, true);
     }
 
     /**
