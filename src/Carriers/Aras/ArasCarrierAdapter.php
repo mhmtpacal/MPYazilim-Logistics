@@ -61,7 +61,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             $this->logSoapExchange($client, $action, [
                 'testMode' => $testMode,
                 'isReturn' => $isReturn,
-                'integrationCode' => (string) ($order['IntegrationCode'] ?? ''),
+                'integrationCode' => (string)($order['IntegrationCode'] ?? ''),
             ]);
 
             if ($isReturn) {
@@ -74,16 +74,49 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 return [];
             }
 
-            return (array) $response->SetOrderResult->OrderResultInfo;
+            return (array)$response->SetOrderResult->OrderResultInfo;
         } catch (Throwable $e) {
             $this->logSoapExchange($client, $action, [
                 'testMode' => $testMode,
                 'isReturn' => $isReturn,
-                'integrationCode' => (string) ($order['IntegrationCode'] ?? ''),
+                'integrationCode' => (string)($order['IntegrationCode'] ?? ''),
                 'error' => $e->getMessage(),
             ]);
             throw new RuntimeException('Aras KargoyaGonder hatasi: ' . $e->getMessage(), 0, $e);
         }
+    }
+
+    private function dateToTime($tarih, $tip = 1)
+    {
+        // tarih formatı 01.11.2022 12:00 şeklinde olmalı
+
+        if ($tip == 2) {
+            $tarihyil = explode("-", $tarih);
+            $yil = substr($tarihyil[2], 0, 4);
+            $ay = $tarihyil[1];
+            $gun = $tarihyil[0];
+
+            $tarihsaat = explode(":", $tarih);
+            $saat = substr($tarihsaat[0], 11, 12);
+            $dakika = $tarihsaat[1];
+        } else {
+            $tarihyil = explode(".", $tarih);
+            $yil = substr($tarihyil[2], 0, 4);
+            $ay = $tarihyil[1];
+            $gun = $tarihyil[0];
+
+            $saat = "00";
+            $dakika = "00";
+            $tarihsaat = explode(":", $tarih);
+            if (count($tarihsaat) > 1) {
+                $saat = substr($tarihsaat[0], 11, 12);
+                $dakika = $tarihsaat[1];
+            }
+        }
+
+
+        $time = mktime((int)$saat, (int)$dakika, 00, (int)$ay, (int)$gun, (int)$yil);
+        return $time;
     }
 
     /**
@@ -127,7 +160,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 'integrationCode' => $trackingNo,
             ]);
 
-            $xmlStr = isset($response->GetQueryXMLResult) ? (string) $response->GetQueryXMLResult : '';
+            $xmlStr = isset($response->GetQueryXMLResult) ? (string)$response->GetQueryXMLResult : '';
             if ($xmlStr === '') {
                 return $this->emptyTrackingResult();
             }
@@ -138,13 +171,17 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 return $this->emptyTrackingResult();
             }
 
+            if (!empty($collection->TESLIM_TARIHI))
+                $teslimTarihi = $this->dateToTime(substr((string)$collection->TESLIM_TARIHI, 6, 2) . "." . substr((string)$collection->TESLIM_TARIHI, 4, 2) . "." . substr((string)$collection->TESLIM_TARIHI, 0, 4) . " " . $collection->TESLIM_SAATI);
+
             return [
-                'TipKodu' => (string) ($collection->TIP_KODU ?? ''),
-                'DurumKodu' => (string) ($collection->DURUM_KODU ?? ''),
-                'Desi' => (string) ($collection->KG_DESI ?? ''),
-                'Tutar' => (string) ($collection->TUTAR ?? ''),
-                'Durum' => (string) ($collection->DURUMU ?? ''),
-                'KargoTakipNo' => (string) ($collection->KARGO_TAKIP_NO ?? '')
+                'TipKodu' => (string)($collection->TIP_KODU ?? ''),
+                'DurumKodu' => (string)($collection->DURUM_KODU ?? ''),
+                'Desi' => (string)($collection->KG_DESI ?? ''),
+                'Tutar' => (string)($collection->TUTAR ?? ''),
+                'Durum' => (string)($collection->DURUMU ?? ''),
+                'KargoTakipNo' => (string)($collection->KARGO_TAKIP_NO ?? ''),
+                'TeslimTarihi' => (string)($teslimTarihi ?? ''),
             ];
         } catch (Throwable $e) {
             $this->logSoapExchange($client, 'GetQueryXML', [
@@ -180,7 +217,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 'integrationCode' => $integrationCode,
             ]);
 
-            return (array) $response;
+            return (array)$response;
         } catch (Throwable $e) {
             $this->logSoapExchange($client, 'CancelDispatch', [
                 'testMode' => $testMode,
@@ -291,7 +328,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
     private function soap(string $wsdl): SoapClient
     {
         $timeout = 8;
-        @ini_set('default_socket_timeout', (string) $timeout);
+        @ini_set('default_socket_timeout', (string)$timeout);
 
         $context = stream_context_create([
             'http' => ['timeout' => $timeout],
@@ -314,7 +351,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
     private function soapLogPath(): string
     {
         if (defined('WRITEPATH')) {
-            return rtrim((string) WRITEPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'aras-soap.log';
+            return rtrim((string)WRITEPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'aras-soap.log';
         }
 
         return getcwd() . DIRECTORY_SEPARATOR . 'writable' . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'aras-soap.log';
@@ -325,10 +362,10 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
      */
     private function logSoapExchange(SoapClient $client, string $action, array $context = []): void
     {
-        $requestXml = method_exists($client, '__getLastRequest') ? (string) $client->__getLastRequest() : '';
-        $responseXml = method_exists($client, '__getLastResponse') ? (string) $client->__getLastResponse() : '';
-        $requestHeaders = method_exists($client, '__getLastRequestHeaders') ? (string) $client->__getLastRequestHeaders() : '';
-        $responseHeaders = method_exists($client, '__getLastResponseHeaders') ? (string) $client->__getLastResponseHeaders() : '';
+        $requestXml = method_exists($client, '__getLastRequest') ? (string)$client->__getLastRequest() : '';
+        $responseXml = method_exists($client, '__getLastResponse') ? (string)$client->__getLastResponse() : '';
+        $requestHeaders = method_exists($client, '__getLastRequestHeaders') ? (string)$client->__getLastRequestHeaders() : '';
+        $responseHeaders = method_exists($client, '__getLastResponseHeaders') ? (string)$client->__getLastResponseHeaders() : '';
         $path = $this->soapLogPath();
         $dir = dirname($path);
 
@@ -364,7 +401,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             '/(<password>)(.*?)(<\/password>)/is',
         ];
 
-        return (string) preg_replace($patterns, '$1***$3', $xml);
+        return (string)preg_replace($patterns, '$1***$3', $xml);
     }
 
     /**
@@ -437,19 +474,19 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
         foreach ($required as $field) {
             $value = $normalized[$field] ?? null;
-            if (!is_scalar($value) || trim((string) $value) === '') {
+            if (!is_scalar($value) || trim((string)$value) === '') {
                 throw new InvalidArgumentException(sprintf('payload.%s zorunludur', $field));
             }
         }
 
-        $this->assertStringLength((string) $normalized['TradingWaybillNumber'], 'TradingWaybillNumber', 1, 16);
-        $this->assertStringLength((string) $normalized['IntegrationCode'], 'IntegrationCode', 2, 32);
-        $this->assertStringLength((string) $normalized['ReceiverName'], 'ReceiverName', 1, 100);
-        $this->assertStringLength((string) $normalized['ReceiverAddress'], 'ReceiverAddress', 1, 250);
-        $this->assertStringLength((string) $normalized['ReceiverCityName'], 'ReceiverCityName', 1, 40);
-        $this->assertStringLength((string) $normalized['ReceiverTownName'], 'ReceiverTownName', 1, 16);
+        $this->assertStringLength((string)$normalized['TradingWaybillNumber'], 'TradingWaybillNumber', 1, 16);
+        $this->assertStringLength((string)$normalized['IntegrationCode'], 'IntegrationCode', 2, 32);
+        $this->assertStringLength((string)$normalized['ReceiverName'], 'ReceiverName', 1, 100);
+        $this->assertStringLength((string)$normalized['ReceiverAddress'], 'ReceiverAddress', 1, 250);
+        $this->assertStringLength((string)$normalized['ReceiverCityName'], 'ReceiverCityName', 1, 40);
+        $this->assertStringLength((string)$normalized['ReceiverTownName'], 'ReceiverTownName', 1, 16);
 
-        $this->assertPhoneNumber((string) $normalized['ReceiverPhone1'], 'ReceiverPhone1');
+        $this->assertPhoneNumber((string)$normalized['ReceiverPhone1'], 'ReceiverPhone1');
         $this->assertOptionalPhoneNumber($normalized['ReceiverPhone2'] ?? null, 'ReceiverPhone2');
         $this->assertOptionalPhoneNumber($normalized['ReceiverPhone3'] ?? null, 'ReceiverPhone3');
 
@@ -471,30 +508,30 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
             if (!isset($normalized['PieceCount'])) {
                 $normalized['PieceCount'] = $pieceCountFromDetails;
-            } elseif ((int) $normalized['PieceCount'] !== $pieceCountFromDetails) {
+            } elseif ((int)$normalized['PieceCount'] !== $pieceCountFromDetails) {
                 throw new InvalidArgumentException('payload.PieceCount ile PieceDetails adetleri eslesmelidir');
             }
         } else {
             unset($normalized['PieceDetails']);
         }
 
-        if ((int) $normalized['IsCod'] === 1) {
+        if ((int)$normalized['IsCod'] === 1) {
             $normalized['CodCollectionType'] = $this->assertInInt($normalized['CodCollectionType'] ?? null, 'CodCollectionType', [0, 1]);
             if (!is_numeric($normalized['CodAmount'] ?? null)) {
                 throw new InvalidArgumentException('payload.CodAmount sayisal olmalidir');
             }
 
-            $codAmount = (float) $normalized['CodAmount'];
+            $codAmount = (float)$normalized['CodAmount'];
             if ($codAmount <= 5 || $codAmount > 5000) {
                 throw new InvalidArgumentException('payload.CodAmount 5\'ten buyuk ve 5000\'den kucuk/esit olmalidir');
             }
             $normalized['CodAmount'] = $codAmount;
 
-            if ((int) $normalized['PayorTypeCode'] === 2) {
+            if ((int)$normalized['PayorTypeCode'] === 2) {
                 throw new InvalidArgumentException('Alici odemeli tahsilatli kargo desteklenmez (PayorTypeCode=2, IsCod=1)');
             }
         } else {
-            $normalized['CodAmount'] = is_numeric($normalized['CodAmount'] ?? null) ? (float) $normalized['CodAmount'] : 0.0;
+            $normalized['CodAmount'] = is_numeric($normalized['CodAmount'] ?? null) ? (float)$normalized['CodAmount'] : 0.0;
             $normalized['CodCollectionType'] = 0;
         }
 
@@ -528,7 +565,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d] gecerli bir nesne olmalidir', $index));
             }
 
-            $barcode = trim((string) ($detail['BarcodeNumber'] ?? ''));
+            $barcode = trim((string)($detail['BarcodeNumber'] ?? ''));
             if ($barcode === '') {
                 throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d].BarcodeNumber zorunludur', $index));
             }
@@ -537,13 +574,13 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             $item = ['BarcodeNumber' => $barcode];
 
             if (array_key_exists('ProductNumber', $detail) && $detail['ProductNumber'] !== null && $detail['ProductNumber'] !== '') {
-                $productNumber = (string) $detail['ProductNumber'];
+                $productNumber = (string)$detail['ProductNumber'];
                 $this->assertStringLength($productNumber, 'PieceDetails.ProductNumber', 1, 32);
                 $item['ProductNumber'] = $productNumber;
             }
 
             if (array_key_exists('Description', $detail) && $detail['Description'] !== null && $detail['Description'] !== '') {
-                $description = (string) $detail['Description'];
+                $description = (string)$detail['Description'];
                 $this->assertStringLength($description, 'PieceDetails.Description', 1, 64);
                 $item['Description'] = $description;
             }
@@ -552,14 +589,14 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 if (!is_numeric($detail['Weight'])) {
                     throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d].Weight sayisal olmalidir', $index));
                 }
-                $item['Weight'] = (string) (float) $detail['Weight'];
+                $item['Weight'] = (string)(float)$detail['Weight'];
             }
 
             if (array_key_exists('VolumetricWeight', $detail) && $detail['VolumetricWeight'] !== null && $detail['VolumetricWeight'] !== '') {
                 if (!is_numeric($detail['VolumetricWeight'])) {
                     throw new InvalidArgumentException(sprintf('payload.PieceDetails[%d].VolumetricWeight sayisal olmalidir', $index));
                 }
-                $item['VolumetricWeight'] = (string) (float) $detail['VolumetricWeight'];
+                $item['VolumetricWeight'] = (string)(float)$detail['VolumetricWeight'];
             }
 
             $normalized[] = $item;
@@ -593,22 +630,22 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         $normalized = array_merge($defaults, $payload);
 
         foreach ([
-            'ConfigurationId',
-            'IntegrationCode',
-            'MainServiceCode',
-        ] as $field) {
+                     'ConfigurationId',
+                     'IntegrationCode',
+                     'MainServiceCode',
+                 ] as $field) {
             $value = $normalized[$field] ?? null;
-            if (!is_scalar($value) || trim((string) $value) === '') {
+            if (!is_scalar($value) || trim((string)$value) === '') {
                 throw new InvalidArgumentException(sprintf('payload.%s zorunludur', $field));
             }
         }
 
-        $this->assertStringLength((string) $normalized['ConfigurationId'], 'ConfigurationId', 1, 64);
-        $this->assertStringLength((string) $normalized['IntegrationCode'], 'IntegrationCode', 1, 64);
-        $this->assertStringLength((string) $normalized['MainServiceCode'], 'MainServiceCode', 1, 32);
+        $this->assertStringLength((string)$normalized['ConfigurationId'], 'ConfigurationId', 1, 64);
+        $this->assertStringLength((string)$normalized['IntegrationCode'], 'IntegrationCode', 1, 64);
+        $this->assertStringLength((string)$normalized['MainServiceCode'], 'MainServiceCode', 1, 32);
 
         if (($normalized['CodeExpireDate'] ?? '') !== '') {
-            $timestamp = strtotime((string) $normalized['CodeExpireDate']);
+            $timestamp = strtotime((string)$normalized['CodeExpireDate']);
             if ($timestamp === false) {
                 throw new InvalidArgumentException('payload.CodeExpireDate gecerli bir tarih olmalidir');
             }
@@ -645,13 +682,13 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 throw new InvalidArgumentException(sprintf('payload.%s sayisal olmalidir', $field));
             }
 
-            $normalized[$field] = (float) $normalized[$field];
+            $normalized[$field] = (float)$normalized[$field];
         }
 
         if (($normalized['TradingWaybillNumber'] ?? '') === '') {
             unset($normalized['TradingWaybillNumber']);
         } else {
-            $this->assertStringLength((string) $normalized['TradingWaybillNumber'], 'TradingWaybillNumber', 1, 64);
+            $this->assertStringLength((string)$normalized['TradingWaybillNumber'], 'TradingWaybillNumber', 1, 64);
         }
 
         return $normalized;
@@ -671,22 +708,22 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
         foreach (['Address', 'CityName', 'Name', 'TownName'] as $requiredField) {
             $itemValue = $normalized[$requiredField] ?? null;
-            if (!is_scalar($itemValue) || trim((string) $itemValue) === '') {
+            if (!is_scalar($itemValue) || trim((string)$itemValue) === '') {
                 throw new InvalidArgumentException(sprintf('payload.%s.%s zorunludur', $field, $requiredField));
             }
         }
 
-        $this->assertStringLength((string) $normalized['Address'], $field . '.Address', 1, 250);
-        $this->assertStringLength((string) $normalized['CityName'], $field . '.CityName', 1, 40);
-        $this->assertStringLength((string) $normalized['TownName'], $field . '.TownName', 1, 40);
-        $this->assertStringLength((string) $normalized['Name'], $field . '.Name', 1, 100);
+        $this->assertStringLength((string)$normalized['Address'], $field . '.Address', 1, 250);
+        $this->assertStringLength((string)$normalized['CityName'], $field . '.CityName', 1, 40);
+        $this->assertStringLength((string)$normalized['TownName'], $field . '.TownName', 1, 40);
+        $this->assertStringLength((string)$normalized['Name'], $field . '.Name', 1, 100);
 
         foreach (['PhoneNumber', 'MobilePhone'] as $phoneField) {
             if (!array_key_exists($phoneField, $normalized) || $normalized[$phoneField] === null || $normalized[$phoneField] === '') {
                 continue;
             }
 
-            $digits = preg_replace('/\D+/', '', (string) $normalized[$phoneField]);
+            $digits = preg_replace('/\D+/', '', (string)$normalized[$phoneField]);
             if (!is_string($digits) || $digits === '' || strlen($digits) < 10 || strlen($digits) > 11) {
                 throw new InvalidArgumentException(sprintf('payload.%s.%s 10-11 haneli sayisal deger olmalidir', $field, $phoneField));
             }
@@ -696,7 +733,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
 
         foreach (['AddressId', 'TaxNumber'] as $optionalField) {
             if (array_key_exists($optionalField, $normalized) && $normalized[$optionalField] !== null) {
-                $normalized[$optionalField] = (string) $normalized[$optionalField];
+                $normalized[$optionalField] = (string)$normalized[$optionalField];
             }
         }
 
@@ -717,11 +754,11 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         $normalized = [];
 
         foreach ($items as $index => $item) {
-            if (!is_scalar($item) || trim((string) $item) === '') {
+            if (!is_scalar($item) || trim((string)$item) === '') {
                 throw new InvalidArgumentException(sprintf('payload.ExtServiceCodeList[%d] bos olamaz', $index));
             }
 
-            $normalized[] = trim((string) $item);
+            $normalized[] = trim((string)$item);
         }
 
         return ['string' => $normalized];
@@ -748,7 +785,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             return;
         }
 
-        $phone = (string) $value;
+        $phone = (string)$value;
         $this->assertPhoneNumber($phone, $field);
     }
 
@@ -800,8 +837,8 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             'ZebraEpl' => $this->normalizeSoapScalarList($result->ZebraEpl ?? null),
             'ZebraPdf' => $this->normalizeSoapScalarList($result->ZebraPdf ?? null),
             'BarcodeModelLst' => $this->normalizeSoapObjectList($result->BarcodeModelLst ?? null, 'BarcodeModel'),
-            'Message' => (string) ($result->Message ?? ''),
-            'ResultCode' => (int) ($result->ResultCode ?? 0),
+            'Message' => (string)($result->Message ?? ''),
+            'ResultCode' => (int)($result->ResultCode ?? 0),
         ];
     }
 
@@ -820,7 +857,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         }
 
         if (is_scalar($value)) {
-            return [(string) $value];
+            return [(string)$value];
         }
 
         return [];
@@ -836,7 +873,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         }
 
         if (is_scalar($value)) {
-            $string = trim((string) $value);
+            $string = trim((string)$value);
             return $string === '' ? [] : [$string];
         }
 
@@ -876,7 +913,7 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         }
 
         return array_map(
-            static fn (mixed $item): array => is_object($item) ? get_object_vars($item) : (array) $item,
+            static fn(mixed $item): array => is_object($item) ? get_object_vars($item) : (array)$item,
             $items
         );
     }
@@ -910,11 +947,11 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         $normalized = [];
 
         foreach ($value as $key => $item) {
-            $normalized[(string) $key] = match (true) {
+            $normalized[(string)$key] = match (true) {
                 is_object($item) => $this->normalizeAnySoapResponse($item),
                 is_array($item) => array_is_list($item)
                     ? array_map(
-                        fn (mixed $listItem): mixed => is_object($listItem) || is_array($listItem)
+                        fn(mixed $listItem): mixed => is_object($listItem) || is_array($listItem)
                             ? $this->normalizeAnySoapResponse($listItem)
                             : $listItem,
                         $item
