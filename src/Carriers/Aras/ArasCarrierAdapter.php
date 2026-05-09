@@ -171,9 +171,6 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 return $this->emptyTrackingResult();
             }
 
-            if (!empty($collection->TESLIM_TARIHI))
-                $teslimTarihi = $this->dateToTime(substr((string)$collection->TESLIM_TARIHI, 6, 2) . "." . substr((string)$collection->TESLIM_TARIHI, 4, 2) . "." . substr((string)$collection->TESLIM_TARIHI, 0, 4) . " " . $collection->TESLIM_SAATI);
-
             return [
                 'TipKodu' => (string)($collection->TIP_KODU ?? ''),
                 'DurumKodu' => (string)($collection->DURUM_KODU ?? ''),
@@ -181,7 +178,10 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
                 'Tutar' => (string)($collection->TUTAR ?? ''),
                 'Durum' => (string)($collection->DURUMU ?? ''),
                 'KargoTakipNo' => (string)($collection->KARGO_TAKIP_NO ?? ''),
-                'TeslimTarihi' => (string)($teslimTarihi ?? ''),
+                'TeslimTarihi' => $this->parseArasDeliveryDate(
+                    (string)($collection->TESLIM_TARIHI ?? ''),
+                    (string)($collection->TESLIM_SAATI ?? '')
+                ),
             ];
         } catch (Throwable $e) {
             $this->logSoapExchange($client, 'GetQueryXML', [
@@ -812,6 +812,27 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
         return $intVal;
     }
 
+    private function parseArasDeliveryDate(string $date, string $time = ''): string
+    {
+        $date = trim($date);
+        if ($date === '') {
+            return '';
+        }
+
+        if (!preg_match('/^\d{8}$/', $date)) {
+            return $date;
+        }
+
+        $time = trim($time);
+        if (!preg_match('/^\d{1,2}:\d{2}$/', $time)) {
+            $time = '00:00';
+        }
+
+        return (string)$this->dateToTime(
+            substr($date, 6, 2) . "." . substr($date, 4, 2) . "." . substr($date, 0, 4) . " " . $time
+        );
+    }
+
     /**
      * @return array<string,mixed>
      */
@@ -823,6 +844,8 @@ final class ArasCarrierAdapter implements CarrierAdapterInterface
             'Desi' => '',
             'Tutar' => '',
             'Durum' => '',
+            'KargoTakipNo' => '',
+            'TeslimTarihi' => '',
         ];
     }
 
