@@ -74,19 +74,79 @@ final class DhlCarrierAdapter implements CarrierAdapterInterface
         $auth = $this->resolveAccount($account);
         $this->baseUrl = $testMode ? 'https://testapi.mngkargo.com.tr' : 'https://api.mngkargo.com.tr';
 
-        $response = $this->request(
-            'GET',
-            '/mngapi/api/standardqueryapi/trackshipment/' . rawurlencode($trackingNo),
-            null,
-            true,
-            $auth
-        );
+        try {
+            $response = $this->request(
+                'GET',
+                '/mngapi/api/standardqueryapi/trackshipment/' . rawurlencode($trackingNo),
+                null,
+                true,
+                $auth
+            );
+        } catch (RuntimeException $e) {
+            if (!str_contains($e->getMessage(), 'HTTP 404')) {
+                throw $e;
+            }
+            $response = [];
+        }
 
-        if (isset($response['type'])) {
+        if (!isset($response['type']) && $this->takipHareketiVarMi($response)) {
+            return $response;
+        }
+
+        try {
+            $shipmentResponse = $this->request(
+                'GET',
+                '/mngapi/api/standardqueryapi/getshipment/' . rawurlencode($trackingNo),
+                null,
+                true,
+                $auth
+            );
+        } catch (RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'HTTP 404')) {
+                return [];
+            }
+            throw $e;
+        }
+
+        $shipmentId = trim((string)($shipmentResponse[0]['shipment']['shipmentId'] ?? ''));
+        if ($shipmentId === '') {
             return [];
         }
 
-        return $response;
+        try {
+            $response = $this->request(
+                'GET',
+                '/mngapi/api/standardqueryapi/trackshipmentByShipmentId/' . rawurlencode($shipmentId),
+                null,
+                true,
+                $auth
+            );
+        } catch (RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'HTTP 404')) {
+                return [];
+            }
+            throw $e;
+        }
+
+        return isset($response['type']) ? [] : $response;
+    }
+
+    /**
+     * @param array<mixed> $payload
+     */
+    private function takipHareketiVarMi(array $payload): bool
+    {
+        if (isset($payload['eventStatus']) || isset($payload['eventDateTime'])) {
+            return true;
+        }
+
+        foreach ($payload as $item) {
+            if (is_array($item) && $this->takipHareketiVarMi($item)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
