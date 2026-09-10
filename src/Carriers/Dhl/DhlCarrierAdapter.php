@@ -14,6 +14,45 @@ final class DhlCarrierAdapter implements CarrierAdapterInterface
     private string $token = '';
     private int $tokenExpiresAt = 0;
     private int $tokenTtlSeconds = 1800;
+    private string $tokenAccountKey = '';
+
+    /** DHL operasyonlari; siparis olusturma ile barkod olusturma ayri tutulur. */
+    public function createBarcode(array $account, array $payload, bool $testMode = false): array
+    {
+        return $this->operation($account, $testMode, 'POST', '/barcodecmdapi/createbarcode', $payload);
+    }
+
+    public function createRecipient(array $account, array $recipient, bool $testMode = false): array
+    {
+        return $this->operation($account, $testMode, 'POST', '/pluscmdapi/createRecipient', ['recipient' => $recipient]);
+    }
+
+    public function getOrder(array $account, string $referenceId, bool $testMode = false): array
+    {
+        return $this->operation($account, $testMode, 'GET', '/standardqueryapi/getorder/' . rawurlencode($referenceId));
+    }
+
+    public function getShipment(array $account, string $referenceId, bool $testMode = false): array
+    {
+        return $this->operation($account, $testMode, 'GET', '/standardqueryapi/getshipment/' . rawurlencode($referenceId));
+    }
+
+    public function cancelShipment(array $account, string $referenceId, string $shipmentId, bool $testMode = false): array
+    {
+        return $this->operation($account, $testMode, 'PUT', '/barcodecmdapi/cancelshipment', compact('referenceId', 'shipmentId'));
+    }
+
+    public function cancelOrder(array $account, string $referenceId, bool $testMode = false): array
+    {
+        return $this->operation($account, $testMode, 'PUT', '/standardcmdapi/cancelorder/' . rawurlencode($referenceId));
+    }
+
+    private function operation(array $account, bool $testMode, string $method, string $path, ?array $payload = null): array
+    {
+        $auth = $this->resolveAccount($account);
+        $this->baseUrl = $testMode ? 'https://testapi.mngkargo.com.tr' : 'https://api.mngkargo.com.tr';
+        return $this->request($method, '/mngapi/api' . $path, $payload, true, $auth);
+    }
 
     /**
      * @param array<string,mixed> $account
@@ -216,6 +255,12 @@ final class DhlCarrierAdapter implements CarrierAdapterInterface
         array $auth,
         bool $allowRetry = true
     ): array {
+        $accountKey = $this->cacheKey($auth);
+        if ($this->tokenAccountKey !== $accountKey) {
+            $this->token = '';
+            $this->tokenExpiresAt = 0;
+            $this->tokenAccountKey = $accountKey;
+        }
         if ($authRequired && !$this->hasUsableInMemoryToken()) {
             $this->refreshTokenWithLock($auth);
         }
@@ -257,13 +302,19 @@ final class DhlCarrierAdapter implements CarrierAdapterInterface
             throw new RuntimeException('DHL(MNG) cURL error: ' . ($err !== '' ? $err : 'unknown'));
         }
 
+        if ($http === 204 && trim($raw) === '') {
+            return [];
+        }
         $json = json_decode($raw, true);
         if (!is_array($json)) {
             throw new RuntimeException('DHL(MNG) invalid JSON (HTTP ' . $http . '): ' . mb_substr($raw, 0, 300));
         }
 
         if ($http === 401 && $authRequired && $allowRetry) {
-            $this->refreshTokenWithLock($auth);
+            // Reddedilen ama henuz suresi dolmamis tokeni cache'ten tekrar kullanma.
+            $this->token = '';
+            $this->tokenExpiresAt = 0;
+            $this->refreshToken($auth);
 
             return $this->request($method, $path, $body, $authRequired, $auth, false);
         }
@@ -386,7 +437,7 @@ final class DhlCarrierAdapter implements CarrierAdapterInterface
      */
     private function cacheKey(array $auth): string
     {
-        return sha1($auth['username'] . '|' . $auth['client_id']);
+        return sha1($this->baseUrl . '|' . $auth['username'] . '|' . $auth['client_id']);
     }
 
     private function cacheFilePath(): string
