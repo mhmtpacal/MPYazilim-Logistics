@@ -305,13 +305,8 @@ final class DhlCarrierAdapter implements CarrierAdapterInterface
         if ($http === 204 && trim($raw) === '') {
             return [];
         }
-        $json = json_decode($raw, true);
-        if (!is_array($json)) {
-            throw new RuntimeException('DHL(MNG) invalid JSON (HTTP ' . $http . '): ' . mb_substr($raw, 0, 300));
-        }
-
         if ($http === 401 && $authRequired && $allowRetry) {
-            // Reddedilen ama henuz suresi dolmamis tokeni cache'ten tekrar kullanma.
+            // Bos/HTML 401 govdesinde de tokeni yenile; reddedilen tokeni cache'ten tekrar kullanma.
             $this->token = '';
             $this->tokenExpiresAt = 0;
             $this->refreshToken($auth);
@@ -319,8 +314,13 @@ final class DhlCarrierAdapter implements CarrierAdapterInterface
             return $this->request($method, $path, $body, $authRequired, $auth, false);
         }
 
+        $json = json_decode($raw, true);
         if ($http >= 400) {
-            throw new RuntimeException('DHL(MNG) HTTP ' . $http . ': ' . mb_substr(json_encode($json, JSON_UNESCAPED_UNICODE), 0, 300));
+            $message = is_array($json) ? json_encode($json, JSON_UNESCAPED_UNICODE) : $raw;
+            throw new RuntimeException('DHL(MNG) HTTP ' . $http . ' (' . strtoupper($method) . ' ' . $path . '): ' . mb_substr($message, 0, 300));
+        }
+        if (!is_array($json)) {
+            throw new RuntimeException('DHL(MNG) invalid JSON (HTTP ' . $http . '): ' . mb_substr($raw, 0, 300));
         }
 
         return $json;
