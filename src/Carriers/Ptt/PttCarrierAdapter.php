@@ -55,9 +55,7 @@ final class PttCarrierAdapter implements CarrierAdapterInterface
     public function barkodTakip(string $username, string $password, string $barcode, bool $testMode = false): array
     {
         try {
-            $soap = $this->soap('tracking', sprintf(self::TRACKING_WSDL, $testMode ? 'Test' : ''));
-
-            $response = $soap->gonderiSorgu([
+            $response = $this->trackingCall('tracking', $testMode, 'gonderiSorgu', [
                 'input' => [
                     'kullanici' => $username,
                     'sifre' => $password,
@@ -77,9 +75,7 @@ final class PttCarrierAdapter implements CarrierAdapterInterface
     public function referansTakip(string $username, string $password, string $referansNo, bool $testMode = false): array
     {
         try {
-            $soap = $this->soap('reference-tracking', sprintf(self::TRACKING_WSDL, $testMode ? 'Test' : ''));
-
-            $response = $soap->gonderiSorgu_referansNo([
+            $response = $this->trackingCall('reference-tracking', $testMode, 'gonderiSorgu_referansNo', [
                 'input' => [
                     'kullanici' => $username,
                     'sifre' => $password,
@@ -114,6 +110,51 @@ final class PttCarrierAdapter implements CarrierAdapterInterface
         } catch (Throwable $e) {
             throw new RuntimeException('PTT kargoSil hatasi: ' . $e->getMessage(), 0, $e);
         }
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     */
+    private function trackingCall(string $key, bool $testMode, string $method, array $payload): object
+    {
+        $wsdl = sprintf(self::TRACKING_WSDL, $testMode ? 'Test' : '');
+
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                $soap = $this->soap($key, $wsdl);
+
+                return $soap->{$method}($payload);
+            } catch (Throwable $e) {
+                unset($this->clients[$key]);
+
+                if ($attempt >= 1 || !$this->isTransientTrackingError($e)) {
+                    throw $e;
+                }
+
+                usleep(200000);
+            }
+        }
+    }
+
+    private function isTransientTrackingError(Throwable $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        foreach ([
+            'could not connect to host',
+            'error fetching http headers',
+            'failed to load external entity',
+            'http request failed',
+            'connection timed out',
+            'operation timed out',
+            'connection reset by peer',
+        ] as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function soap(string $key, string $wsdl): SoapClient
